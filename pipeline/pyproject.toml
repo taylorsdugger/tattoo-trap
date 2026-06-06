@@ -1,0 +1,28 @@
+[project]
+name = "tattoo-trap-pipeline"
+version = "0.1.0"
+description = "Tattoo Trap data pipeline: seed shops, crawl, embed portfolio images, ingest to Supabase."
+requires-python = ">=3.9"
+dependencies = [
+    "supabase>=2.4",
+    "playwright>=1.44",
+    "httpx>=0.27",
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "python-dotenv>=1.0",
+    "transformers>=4.40",
+    "torch>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

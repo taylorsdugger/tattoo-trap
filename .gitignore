@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.uv/
+
+# next.js
+apps/web/.next/
+apps/web/out/
+apps/web/build/
+.vercel/
+
+# env
+.env
+.env.local
+.env*.local
+pipeline/.env
+
+# python / playwright
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+playwright-report/
+.cache/
+
+# pipeline scratch
+pipeline/.data/
+pipeline/downloads/
+
+# os / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
+*.swp
