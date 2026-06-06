@@ -26,6 +26,17 @@ NAV_JUNK = {
     "home", "about", "contact", "book", "booking", "gallery", "portfolio", "shop",
     "faq", "more", "menu", "aftercare", "pricing", "blog", "news", "merch",
 }
+# Any link whose label contains one of these *words* is not an artist. Token-based (not
+# substring) so it catches "About Us" / "Contact Us" / "Book Now" / "Artist Interview" /
+# "Bridal Makeup" without nuking real names (e.g. "Mark Booker" keeps the token "booker").
+JUNK_WORDS = {
+    "about", "contact", "book", "booking", "appointment", "appointments", "consultation",
+    "consultations", "interview", "bridal", "makeup", "faq", "gallery", "portfolio",
+    "home", "menu", "shop", "store", "aftercare", "pricing", "price", "blog", "news",
+    "merch", "press", "career", "careers", "review", "reviews", "hours", "location",
+    "locations", "directions", "guest", "events", "specials", "cart", "checkout", "gift",
+    "us", "faqs", "policy", "privacy", "terms",
+}
 SKIP_IMG = (
     "logo", "icon", "sprite", "favicon", "avatar", "placeholder",
     # non-art site chrome / headshots that pollute the visual index
@@ -143,7 +154,8 @@ def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     if not path:
         return False
     label = (text or "").strip().lower()
-    if label in NAV_JUNK:
+    label_words = {w for w in re.split(r"[^a-z]+", label) if w}
+    if label in NAV_JUNK or (label_words & JUNK_WORDS):
         return False
     if any(p in label or p in path for p in STOP_PHRASES):
         return False
