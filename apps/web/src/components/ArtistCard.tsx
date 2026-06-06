@@ -1,69 +1,76 @@
-import Link from "next/link";
+"use client";
+
+import { useRouter } from "next/navigation";
 import { displayImage } from "@/lib/images";
 import type { ArtistMatch } from "@/lib/types";
+import { Label, Meter } from "./ui";
 
-export default function ArtistCard({ match }: { match: ArtistMatch }) {
+export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: number }) {
+  const router = useRouter();
   const pct = Math.round(match.similarity * 100);
   const images = (match.images ?? []).slice(0, 4);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
-      <div className="grid grid-cols-4 gap-px bg-neutral-800">
-        {images.length > 0 ? (
-          images.map((img, i) => {
+    <article
+      onClick={() => router.push(`/artist/${match.artist_slug}`)}
+      className="tt-row grid cursor-pointer gap-[18px] border-t border-line py-[30px] first:border-t-0"
+    >
+      <div className="flex flex-wrap items-start gap-5">
+        <div className="flex min-w-[220px] flex-1 items-baseline gap-3.5">
+          <span className="w-6 font-mono text-[13px] text-ink-faint">
+            {String(rank).padStart(2, "0")}
+          </span>
+          <div>
+            <h3 className="font-display text-[clamp(22px,3vw,30px)] font-[420] italic leading-[1.05] tracking-display text-ink">
+              {match.artist_name}
+            </h3>
+            <div className="mt-[5px] text-sm text-ink-soft">
+              {match.shop_name}
+              {match.shop_address ? ` · ${match.shop_address}` : ` · ${match.metro_name}`}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-[9px]">
+            <Label>match</Label>
+            <Meter v={match.similarity} />
+            <span className="font-mono text-[13px] font-medium text-ink">
+              {pct}
+              <span className="text-ink-faint">%</span>
+            </span>
+          </div>
+          {match.artist_instagram && (
+            <a
+              href={`https://instagram.com/${match.artist_instagram}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="whitespace-nowrap font-mono text-xs text-ink-soft"
+            >
+              @{match.artist_instagram} ↗
+            </a>
+          )}
+        </div>
+      </div>
+
+      {images.length > 0 && (
+        <div className="grid grid-cols-4 gap-2.5">
+          {images.map((img, i) => {
             const src = displayImage(img.storage_path, img.source_url);
             return (
-              <div key={i} className="aspect-square bg-neutral-950">
+              <div
+                key={i}
+                className="aspect-square overflow-hidden rounded-[1px] bg-paper-2 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]"
+              >
                 {src ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
                 ) : null}
               </div>
             );
-          })
-        ) : (
-          <div className="col-span-4 flex aspect-[4/1] items-center justify-center bg-neutral-950 text-xs text-neutral-600">
-            no images yet
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-1 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <Link href={`/artist/${match.artist_slug}`} className="font-semibold hover:text-rose-400">
-            {match.artist_name}
-          </Link>
-          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-xs font-medium text-rose-300">
-            {pct}% match
-          </span>
+          })}
         </div>
-        <div className="text-sm text-neutral-400">
-          {match.shop_name}
-          {match.shop_address ? ` · ${match.shop_address}` : ` · ${match.metro_name}`}
-        </div>
-        <div className="flex gap-3 pt-1 text-xs">
-          {match.artist_instagram && (
-            <a
-              href={`https://instagram.com/${match.artist_instagram}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-rose-400 hover:underline"
-            >
-              @{match.artist_instagram}
-            </a>
-          )}
-          {match.shop_website && (
-            <a
-              href={match.shop_website}
-              target="_blank"
-              rel="noreferrer"
-              className="text-neutral-400 hover:underline"
-            >
-              shop site ↗
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </article>
   );
 }

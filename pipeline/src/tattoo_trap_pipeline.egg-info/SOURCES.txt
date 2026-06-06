@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/tattoo_trap/__init__.py
+src/tattoo_trap/config.py
+src/tattoo_trap/crawl_shops.py
+src/tattoo_trap/db.py
+src/tattoo_trap/embed_images.py
+src/tattoo_trap/embedder.py
+src/tattoo_trap/seed_shops.py
+src/tattoo_trap/tag_artists.py
+src/tattoo_trap_pipeline.egg-info/PKG-INFO
+src/tattoo_trap_pipeline.egg-info/SOURCES.txt
+src/tattoo_trap_pipeline.egg-info/dependency_links.txt
+src/tattoo_trap_pipeline.egg-info/requires.txt
+src/tattoo_trap_pipeline.egg-info/top_level.txt
+tests/test_parity.py

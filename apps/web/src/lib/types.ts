@@ -62,3 +62,21 @@ export type PortfolioImage = {
   width: number | null;
   height: number | null;
 };
+
+// Shape returned by the artist-directory query (artists with embedded shop + metro + sample images).
+export type DirectoryArtist = {
+  id: number;
+  name: string;
+  slug: string;
+  instagram_handle: string | null;
+  avatar_url: string | null;
+  shop: {
+    id: number;
+    name: string;
+    address: string | null;
+    website: string | null;
+    instagram_handle: string | null;
+    metro: { name: string; slug: string } | null;
+  } | null;
+  images: { storage_path: string | null; source_url: string | null }[] | null;
+};

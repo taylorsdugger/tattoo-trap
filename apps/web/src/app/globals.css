@@ -1,9 +1,75 @@
 @import "tailwindcss";
 
+/* Atelier theme from designs/src/theme.js — editorial serif, airy, museum-catalog restraint. */
+@theme {
+  --color-paper: #f3f0e9;
+  --color-paper-2: #eceadf;
+  --color-card: #faf8f2;
+  --color-ink: #1a1714;
+  --color-ink-soft: #6f6a60;
+  --color-ink-faint: #a39d90;
+  --color-line: #ddd8cb;
+  --color-line-strong: #c8c2b2;
+  --color-accent: #1a1714;
+
+  --font-display: var(--font-newsreader), Georgia, serif;
+  --font-body: var(--font-archivo), system-ui, sans-serif;
+  --font-mono: var(--font-spline-mono), ui-monospace, monospace;
+
+  --tracking-display: -0.01em;
+  --tracking-label: 0.18em;
+}
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  @apply bg-neutral-950 text-neutral-100 antialiased;
+  @apply bg-paper font-body text-ink antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 22%, transparent);
+}
+
+/* result rows / cards dim slightly on hover */
+.tt-row {
+  transition: opacity 0.16s ease;
+}
+.tt-row:hover {
+  opacity: 0.62;
+}
+
+/* scanning beam over the reference image while searching */
+@keyframes tt-scan {
+  0% {
+    transform: translateY(-72px);
+  }
+  100% {
+    transform: translateY(240px);
+  }
+}
+.tt-scan > div {
+  animation: tt-scan 1.3s ease-in-out infinite;
+}
+
+@keyframes tt-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.tt-pulse {
+  animation: tt-pulse 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-scan > div,
+  .tt-pulse {
+    animation: none;
+  }
 }

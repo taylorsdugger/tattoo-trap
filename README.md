@@ -54,7 +54,9 @@ cd pipeline
 cp .env.example .env         # fill SUPABASE_URL + SERVICE_ROLE_KEY
 uv sync                      # or: python -m venv .venv && pip install -e .
 python -m playwright install chromium
-python -m tattoo_trap.seed_shops --metro chicago
+python -m tattoo_trap.seed_shops --metro chicago                 # from seeds/chicago.csv
+# optional: enrich from Google Places (needs GOOGLE_PLACES_API_KEY; cost-capped in config)
+python -m tattoo_trap.seed_shops --metro chicago --source places
 python -m tattoo_trap.crawl_shops --metro chicago
 python -m tattoo_trap.embed_images --metro chicago
 ```

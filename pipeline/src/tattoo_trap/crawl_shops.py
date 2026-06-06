@@ -14,7 +14,9 @@ import argparse
 import re
 import time
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 
+import httpx
 from playwright.sync_api import sync_playwright
 
 from . import config, db
@@ -24,7 +26,22 @@ NAV_JUNK = {
     "home", "about", "contact", "book", "booking", "gallery", "portfolio", "shop",
     "faq", "more", "menu", "aftercare", "pricing", "blog", "news", "merch",
 }
-SKIP_IMG = ("logo", "icon", "sprite", "favicon", "avatar-default", "placeholder")
+SKIP_IMG = (
+    "logo", "icon", "sprite", "favicon", "avatar", "placeholder",
+    # non-art site chrome / headshots that pollute the visual index
+    "banner", "profile", "header", "exterior", "interior", "storefront",
+    "flash-wall", "-sign", "signage",  # "-sign" not "sign" so it won't match "designs"
+)
+# WordPress (and similar) emit resized copies like `foo-150x150.jpg` alongside the original
+# `foo.jpg`. Strip the `-WxH` suffix so we embed the full-size image once, not tiny dupes.
+SIZE_SUFFIX_RE = re.compile(r"-\d{2,4}x\d{2,4}(?=\.(?:jpe?g|png|webp|gif)\b)", re.IGNORECASE)
+# Generic non-artist page labels/paths that the person-name heuristic otherwise mistakes for
+# artists (e.g. "Privacy Policy", "Product Photography").
+STOP_PHRASES = (
+    "privacy", "policy", "terms", "cookie", "shipping", "returns", "return",
+    "photography", "videos", "video", "imagery", "infographic", "checkout", "cart",
+    "gift", "career", "press",
+)
 PERSON_RE = re.compile(r"^[A-Z][a-zA-Z.''-]+(?:\s+[A-Z][a-zA-Z.''-]+){1,2}$")
 IG_RE = re.compile(r"instagram\.com/([A-Za-z0-9_.]+)")
 
@@ -50,12 +67,49 @@ def _abs(base: str, url: str) -> str:
     return urljoin(base, url)
 
 
+# robots.txt: one parser per host, fetched with our real UA. None = "couldn't fetch", which
+# we treat as allowed (no rules published). RobotFileParser.can_fetch defaults to allow when a
+# host has no matching disallow.
+_robots_cache: dict[str, RobotFileParser | None] = {}
+
+
+def _robots_for(url: str) -> RobotFileParser | None:
+    parsed = urlparse(url)
+    host = f"{parsed.scheme}://{parsed.netloc}"
+    if host in _robots_cache:
+        return _robots_cache[host]
+
+    rp: RobotFileParser | None = None
+    try:
+        resp = httpx.get(
+            f"{host}/robots.txt",
+            headers={"User-Agent": config.USER_AGENT},
+            timeout=config.REQUEST_TIMEOUT_S,
+            follow_redirects=True,
+        )
+        if resp.status_code < 400 and resp.text.strip():
+            rp = RobotFileParser()
+            rp.parse(resp.text.splitlines())
+    except Exception:  # noqa: BLE001 — network/parse failure → treat as no rules (allowed)
+        rp = None
+
+    _robots_cache[host] = rp
+    return rp
+
+
+def _can_fetch(url: str) -> bool:
+    rp = _robots_for(url)
+    if rp is None:
+        return True
+    return rp.can_fetch(config.USER_AGENT, url)
+
+
 def _clean_image_urls(base: str, raw: list[str]) -> list[str]:
     out, seen = [], set()
     for u in raw:
         if not u or u.startswith("data:"):
             continue
-        absu = _abs(base, u)
+        absu = SIZE_SUFFIX_RE.sub("", _abs(base, u))  # collapse -WxH variants to the original
         low = absu.lower()
         if any(bad in low for bad in SKIP_IMG):
             continue
@@ -79,6 +133,10 @@ def _instagram_handle(anchors: list[dict]) -> str | None:
 
 
 def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
+    href = href.decode("utf-8", "ignore") if isinstance(href, bytes) else str(href or "")
+    text = text.decode("utf-8", "ignore") if isinstance(text, bytes) else str(text or "")
+    if not href:
+        return False
     if urlparse(href).netloc and urlparse(href).netloc != base_host:
         return False
     path = urlparse(href).path.lower().strip("/")
@@ -86,6 +144,8 @@ def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
         return False
     label = (text or "").strip().lower()
     if label in NAV_JUNK:
+        return False
+    if any(p in label or p in path for p in STOP_PHRASES):
         return False
     # individual artist page: an artist-hint segment with something after it,
     # or a person-looking link label.
@@ -109,6 +169,10 @@ def crawl_shop(page, shop: dict) -> int:
     if not website:
         return 0
     base_host = urlparse(website).netloc
+
+    if not _can_fetch(website):
+        print(f"  ! robots.txt disallows {website}; skipping")
+        return 0
 
     try:
         page.goto(website, timeout=config.REQUEST_TIMEOUT_S * 1000, wait_until="domcontentloaded")
@@ -137,12 +201,18 @@ def crawl_shop(page, shop: dict) -> int:
         for href, name in list(artist_links.items())[: config.CRAWL_MAX_PAGES_PER_SHOP]:
             if pages_visited >= config.CRAWL_MAX_PAGES_PER_SHOP:
                 break
+            if not _can_fetch(href):
+                continue
             try:
+                time.sleep(config.POLITE_DELAY_S)
                 page.goto(href, timeout=config.REQUEST_TIMEOUT_S * 1000, wait_until="domcontentloaded")
                 pages_visited += 1
             except Exception:  # noqa: BLE001
                 continue
             data = page.evaluate(_COLLECT_JS)
+            imgs = _clean_image_urls(href, data["imgs"])[: config.MAX_IMAGES_PER_ARTIST]
+            if not imgs:
+                continue  # no portfolio images -> not a real artist page (e.g. a stray nav link)
             ig = _instagram_handle(data["anchors"])
             artist = db.upsert_artist(
                 shop_id=shop["id"],
@@ -151,7 +221,6 @@ def crawl_shop(page, shop: dict) -> int:
                 instagram_handle=ig,
                 profile_url=href,
             )
-            imgs = _clean_image_urls(href, data["imgs"])[: config.MAX_IMAGES_PER_ARTIST]
             for u in imgs:
                 db.add_candidate_image(artist["id"], u)
                 stored += 1
@@ -185,8 +254,11 @@ def crawl_metro(metro_slug: str) -> None:
         page = context.new_page()
         for shop in shops:
             print(f"- {shop['name']} ({shop.get('website') or 'no website'})")
-            n = crawl_shop(page, shop)
-            print(f"    stored {n} candidate image(s)")
+            try:
+                n = crawl_shop(page, shop)
+                print(f"    stored {n} candidate image(s)")
+            except Exception as exc:  # noqa: BLE001 — one bad shop must not abort the run
+                print(f"    ! skipped (crawl error): {exc!r}")
             time.sleep(config.POLITE_DELAY_S)
         browser.close()
 

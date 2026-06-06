@@ -4,16 +4,16 @@ import type { ArtistMatch } from "@/lib/types";
 export default function SearchResults({ results }: { results: ArtistMatch[] }) {
   if (results.length === 0) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-6 text-center text-sm text-neutral-400">
+      <div className="rounded-[2px] border border-line bg-card p-6 text-center text-sm text-ink-soft">
         No matches yet for this metro. Once the pipeline has crawled and embedded some shops,
         results will appear here.
       </div>
     );
   }
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {results.map((m) => (
-        <ArtistCard key={m.artist_id} match={m} />
+    <div className="flex flex-col">
+      {results.map((m, i) => (
+        <ArtistCard key={m.artist_id} match={m} rank={i + 1} />
       ))}
     </div>
   );

@@ -27,11 +27,16 @@ async function loadBundle(onStatus?: (msg: string) => void): Promise<ClipBundle>
   const hasWebGPU =
     typeof navigator !== "undefined" && "gpu" in navigator && !!(navigator as any).gpu;
 
+  // ORT logs benign EP-assignment warnings via console.error, which trips the
+  // Next.js dev overlay. Only surface actual errors (3 = error, 4 = fatal).
+  const session_options = { logSeverityLevel: 3 as const };
+
   // Prefer WebGPU; fall back to WASM. fp32 maximizes parity with the fp32 pipeline.
   try {
     const vision = await CLIPVisionModelWithProjection.from_pretrained(MODEL_ID, {
       dtype: "fp32",
       device: hasWebGPU ? "webgpu" : "wasm",
+      session_options,
     });
     return { processor, vision };
   } catch (err) {
@@ -39,6 +44,7 @@ async function loadBundle(onStatus?: (msg: string) => void): Promise<ClipBundle>
     const vision = await CLIPVisionModelWithProjection.from_pretrained(MODEL_ID, {
       dtype: "fp32",
       device: "wasm",
+      session_options,
     });
     return { processor, vision };
   }

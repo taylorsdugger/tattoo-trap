@@ -31,6 +31,14 @@ EMBED_DIM = 512
 STORAGE_BUCKET = "portfolios"
 THUMB_MAX = 384  # max thumbnail dimension (px) to keep Storage under the 1GB free cap
 
+# --- Google Places (cost guardrails) ---------------------------------------------------
+# Places Text Search (New) bills PER request (per page). Each page returns up to 20 results.
+# These caps bound the spend of a seed run: at most PLACES_MAX_PAGES_PER_METRO requests and
+# PLACES_MAX_RESULTS_PER_METRO shops per metro. Lower them to stay deep inside free credit.
+PLACES_RADIUS_M = 40000.0  # ~25 mi bias circle around the metro center
+PLACES_MAX_PAGES_PER_METRO = 3  # 3 pages x ~20 = up to 60 results, 3 billable requests
+PLACES_MAX_RESULTS_PER_METRO = 60  # hard cap; paging stops early once reached
+
 # --- Crawl limits ----------------------------------------------------------------------
 MAX_IMAGES_PER_ARTIST = 15
 CRAWL_MAX_PAGES_PER_SHOP = 12

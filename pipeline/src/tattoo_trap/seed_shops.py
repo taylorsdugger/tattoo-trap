@@ -1,10 +1,19 @@
 """Stage 1 — seed shops for a metro.
 
-Primary source: a hand-curated CSV at seeds/<metro>.csv with columns:
-    name, address, website, instagram_handle, lat, lng
+Two sources, combinable via --source:
+  - csv    : a hand-curated CSV at seeds/<metro>.csv with columns
+             name, address, website, instagram_handle, lat, lng  (free, default)
+  - places : Google Places API (New) Text Search, biased to the metro center.
+             Requires GOOGLE_PLACES_API_KEY. Cost is capped in config
+             (PLACES_MAX_PAGES_PER_METRO / PLACES_MAX_RESULTS_PER_METRO).
+
+Both sources upsert into `shops` and dedupe by google_place_id then (metro_id, name), so
+running csv then places (or --source both) reconciles instead of duplicating.
 
 Run:
-    python -m tattoo_trap.seed_shops --metro chicago
+    python -m tattoo_trap.seed_shops --metro chicago                 # csv (default)
+    python -m tattoo_trap.seed_shops --metro chicago --source places
+    python -m tattoo_trap.seed_shops --metro chicago --source both
 """
 
 from __future__ import annotations
@@ -12,7 +21,7 @@ from __future__ import annotations
 import argparse
 import csv
 
-from . import config, db
+from . import config, db, places
 
 
 def _f(val: str | None) -> float | None:
@@ -22,14 +31,8 @@ def _f(val: str | None) -> float | None:
         return None
 
 
-def seed_from_csv(metro_slug: str) -> int:
-    metro = db.get_metro_by_slug(metro_slug)
-    if not metro:
-        raise SystemExit(
-            f"Metro '{metro_slug}' not found. Apply supabase/migrations/0004_seed_metros.sql first."
-        )
-
-    csv_path = config.SEEDS_DIR / f"{metro_slug}.csv"
+def seed_from_csv(metro: dict) -> int:
+    csv_path = config.SEEDS_DIR / f"{metro['slug']}.csv"
     if not csv_path.exists():
         raise SystemExit(f"Seed file not found: {csv_path}")
 
@@ -53,13 +56,50 @@ def seed_from_csv(metro_slug: str) -> int:
     return count
 
 
+def seed_from_places(metro: dict) -> int:
+    if metro.get("lat") is None or metro.get("lng") is None:
+        raise SystemExit(
+            f"Metro '{metro['slug']}' has no lat/lng; cannot bias a Places search."
+        )
+
+    found = places.search_tattoo_shops(lat=metro["lat"], lng=metro["lng"])
+    for p in found:
+        db.upsert_shop(
+            metro_id=metro["id"],
+            name=p.name,
+            address=p.address,
+            website=p.website,
+            lat=p.lat,
+            lng=p.lng,
+            google_place_id=p.place_id,
+            source="places",
+        )
+    return len(found)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed tattoo shops for a metro from CSV.")
+    parser = argparse.ArgumentParser(description="Seed tattoo shops for a metro.")
     parser.add_argument("--metro", required=True, help="metro slug, e.g. chicago")
+    parser.add_argument(
+        "--source",
+        choices=("csv", "places", "both"),
+        default="csv",
+        help="where to seed shops from (default: csv)",
+    )
     args = parser.parse_args()
 
-    n = seed_from_csv(args.metro)
-    print(f"Seeded {n} shop(s) for '{args.metro}'.")
+    metro = db.get_metro_by_slug(args.metro)
+    if not metro:
+        raise SystemExit(
+            f"Metro '{args.metro}' not found. Apply supabase/migrations/0004_seed_metros.sql first."
+        )
+
+    if args.source in ("csv", "both"):
+        n = seed_from_csv(metro)
+        print(f"Seeded {n} shop(s) from CSV for '{args.metro}'.")
+    if args.source in ("places", "both"):
+        n = seed_from_places(metro)
+        print(f"Seeded/reconciled {n} shop(s) from Google Places for '{args.metro}'.")
 
 
 if __name__ == "__main__":

@@ -53,7 +53,24 @@ def upsert_shop(
     google_place_id: Optional[str] = None,
     source: str = "csv",
 ) -> dict[str, Any]:
-    """Insert a shop, or fetch the existing one. Dedupe on (metro_id, name) or place id."""
+    """Insert a shop, or fetch the existing one.
+
+    Dedupe order: google_place_id (stable across name/source variations) first, then
+    (metro_id, name). This lets a Places run reconcile with a CSV-seeded shop instead of
+    creating a duplicate.
+    """
+    if google_place_id:
+        by_place = (
+            client()
+            .table("shops")
+            .select("*")
+            .eq("google_place_id", google_place_id)
+            .limit(1)
+            .execute()
+        )
+        if by_place.data:
+            return by_place.data[0]
+
     existing = (
         client()
         .table("shops")
