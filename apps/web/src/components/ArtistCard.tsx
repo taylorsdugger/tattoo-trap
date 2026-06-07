@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { displayImage } from "@/lib/images";
 import type { ArtistMatch } from "@/lib/types";
 import FavoriteButton from "./FavoriteButton";
+import FetchImagesButton from "./FetchImagesButton";
 import TrashArtistButton from "./TrashArtistButton";
 import { Label, Meter } from "./ui";
 
@@ -46,6 +47,10 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
               <span className="text-ink-faint">%</span>
             </span>
             <FavoriteButton slug={match.artist_slug} name={match.artist_name} />
+            {/* Dev-only: backfill images for an artist that has none yet (self-gates in prod). */}
+            {images.length === 0 && match.artist_instagram && (
+              <FetchImagesButton artistId={match.artist_id} variant="icon" />
+            )}
             <TrashArtistButton
               id={match.artist_id}
               name={match.artist_name}

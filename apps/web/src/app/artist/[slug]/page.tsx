@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import FavoriteButton from "@/components/FavoriteButton";
+import FetchImagesButton from "@/components/FetchImagesButton";
 import PortfolioGrid from "@/components/PortfolioGrid";
 import { Label, btnPrimary } from "@/components/ui";
 import { displayImage } from "@/lib/images";
@@ -148,6 +149,13 @@ export default async function ArtistPage({
       <Label>portfolio</Label>
       <div className="mt-4">
         <PortfolioGrid images={imgs} />
+        {/* Dev-only backfill: when an artist has no images and a handle to scrape, offer an
+            on-demand RapidAPI fetch (no Apify credits). FetchImagesButton self-gates in prod. */}
+        {imgs.length === 0 && a.instagram_handle && (
+          <div className="mt-4">
+            <FetchImagesButton artistId={a.id} />
+          </div>
+        )}
       </div>
     </div>
   );

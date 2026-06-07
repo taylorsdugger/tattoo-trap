@@ -67,7 +67,18 @@ def embed_metro(metro_slug: str) -> None:
     artists = db.artists_for_shops([s["id"] for s in shops])
     artist_ids = [a["id"] for a in artists]
     rows = db.unembedded_images_for_artists(artist_ids)
-    print(f"Embedding {len(rows)} image(s) across {len(artists)} artist(s) in '{metro_slug}'...")
+    _embed_rows(rows, f"across {len(artists)} artist(s) in '{metro_slug}'")
+
+
+def embed_artist(artist_id: int) -> None:
+    """Embed just one artist's pending candidates — used by the web app's on-demand
+    'fetch images' button so a single artist's images appear without a full metro run."""
+    rows = db.unembedded_images_for_artists([artist_id])
+    _embed_rows(rows, f"for artist {artist_id}")
+
+
+def _embed_rows(rows: list[dict], label: str) -> int:
+    print(f"Embedding {len(rows)} image(s) {label}...")
 
     embedder = get_embedder()
     done = 0
@@ -123,13 +134,20 @@ def embed_metro(metro_slug: str) -> None:
             print(f"    embedded {done}/{len(rows)}")
 
     print(f"Done. Embedded {done} image(s).")
+    return done
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download + embed candidate portfolio images.")
-    parser.add_argument("--metro", required=True, help="metro slug, e.g. chicago")
+    parser.add_argument("--metro", help="metro slug, e.g. chicago")
+    parser.add_argument("--artist", type=int, help="single artist id (on-demand backfill)")
     args = parser.parse_args()
-    embed_metro(args.metro)
+    if args.artist:
+        embed_artist(args.artist)
+    elif args.metro:
+        embed_metro(args.metro)
+    else:
+        parser.error("one of --metro or --artist is required")
 
 
 if __name__ == "__main__":

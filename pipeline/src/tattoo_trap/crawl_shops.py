@@ -63,11 +63,14 @@ NON_NAME_WORDS = {
     "menu", "store", "bridal", "makeup", "guest",
 }
 
-# A single token in a person's name: starts uppercase AND contains at least one lowercase
-# letter — so ALL-CAPS nav labels ("VIEW OUR SERVICES", "ANIME AND MANGA") are rejected, which
-# the old `[A-Z][a-zA-Z]+` regex let straight through. Allows internal caps, apostrophes,
-# hyphens, periods: McDarrah, O'Neil, Anne-Marie, DeLuca.
-NAME_TOKEN_RE = re.compile(r"^[A-Z][A-Za-z'’.\-]*[a-z][A-Za-z'’.\-]*$")
+# A single token in a person's name: starts uppercase, is ≥2 letters, and ends in a letter.
+# Both Title-Case ("Scott", "McDarrah", "O'Neil", "Anne-Marie", "DeLuca") and ALL-CAPS ("SCOTT",
+# "LOTZ") qualify — many Wix/Squarespace themes render artist names in CSS caps, so the old rule
+# (require a lowercase letter) silently dropped every all-caps name. ALL-CAPS nav labels
+# ("VIEW OUR SERVICES", "ANIME AND MANGA") are still rejected, but by the NON_NAME_WORDS check in
+# _is_person_name (which runs first and already covers them), not by letter case. Single letters
+# fall through to INITIAL_RE.
+NAME_TOKEN_RE = re.compile(r"^[A-Z][A-Za-z'’.\-]*[A-Za-z]$")
 # A bare initial like "J" or "J." — allowed alongside name tokens but never the whole name.
 INITIAL_RE = re.compile(r"^[A-Z]\.?$")
 SKIP_IMG = (
@@ -102,6 +105,42 @@ _COLLECT_JS = """
   return { anchors, imgs, title: document.title || '' };
 }
 """
+
+
+# Step-scroll the whole page to trigger lazy-loaded (`loading="lazy"` / `data-src`) gallery
+# images, then return to the top. Async so Playwright awaits the inter-step settles.
+_SCROLL_JS = """
+async () => {
+  const step = Math.max(window.innerHeight, 600);
+  for (let y = 0; y < document.body.scrollHeight; y += step) {
+    window.scrollTo(0, y);
+    await new Promise(r => setTimeout(r, 150));
+  }
+  window.scrollTo(0, 0);
+}
+"""
+
+# Bounded settle waits for client-rendered galleries (Wix/GoDaddy/Squarespace build their
+# portfolio grids in JS after load). Capped so a page that never goes network-idle costs a few
+# seconds, not the full REQUEST_TIMEOUT_S, per page.
+GALLERY_SETTLE_MS = 8000
+LAZYLOAD_SETTLE_MS = 1500
+
+
+def _settle_and_collect(page) -> dict:
+    """Read anchors+images after giving JS-rendered galleries a chance to populate. The caller
+    has already navigated (`page.goto`). Best-effort: every wait is bounded and swallowed, so a
+    static page (nothing to lazy-load, never idle) just falls straight through to the collect."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=GALLERY_SETTLE_MS)
+    except Exception:  # noqa: BLE001 — analytics/long-poll sites never reach idle; that's fine
+        pass
+    try:
+        page.evaluate(_SCROLL_JS)
+        page.wait_for_load_state("networkidle", timeout=LAZYLOAD_SETTLE_MS)
+    except Exception:  # noqa: BLE001 — scroll-triggered loads are a bonus, not a requirement
+        pass
+    return page.evaluate(_COLLECT_JS)
 
 
 def _abs(base: str, url: str) -> str:
@@ -196,6 +235,24 @@ def _is_person_name(text: str) -> bool:
     return name_tokens >= 2
 
 
+def _is_mononym_slug(text: str, segs: list[str]) -> bool:
+    """A flat single-segment page whose label is ONE capitalized token that equals the slug —
+    e.g. /bowser labeled "Bowser". Single-name artists/handles (Bowser, Bishop, Sailor) are common
+    and the 2-token `_is_person_name` rule misses them. Requiring `slugify(label) == segment` is the
+    corroboration that keeps stray one-word nav buttons out: a real mononym page links its own name,
+    whereas a nav button's label rarely matches its href slug. NON_ARTIST_SEGMENTS is already
+    enforced by the caller; NON_NAME_WORDS screens domain/category words like "Flash" or "Guest"."""
+    if len(segs) != 1:
+        return False
+    t = (text or "").strip()
+    tokens = t.split()
+    if len(tokens) != 1 or not NAME_TOKEN_RE.match(tokens[0]):
+        return False
+    if t.lower() in NON_NAME_WORDS:
+        return False
+    return db.slugify(t) == segs[0]
+
+
 def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     href = href.decode("utf-8", "ignore") if isinstance(href, bytes) else str(href or "")
     text = text.decode("utf-8", "ignore") if isinstance(text, bytes) else str(text or "")
@@ -214,7 +271,7 @@ def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     # or /our-team/jane — the hint is a PARENT segment, not the final one. Requiring the hint
     # in a parent segment stops blog slugs that merely end in "...-artist" from matching.
     hint_dir = any(h in seg for seg in segs[:-1] for h in ARTIST_HINTS)
-    return _is_person_name(text.strip()) or hint_dir
+    return _is_person_name(text.strip()) or hint_dir or _is_mononym_slug(text, segs)
 
 
 def _artist_name(text: str, href: str) -> str:
@@ -265,7 +322,7 @@ def crawl_shop(page, shop: dict) -> int:
         print(f"  ! could not load {website}: {exc}")
         return 0
 
-    home = page.evaluate(_COLLECT_JS)
+    home = _settle_and_collect(page)
 
     # Instagram handle for the shop (if we don't have one yet).
     if not shop.get("instagram_handle"):
@@ -294,7 +351,7 @@ def crawl_shop(page, shop: dict) -> int:
                 pages_visited += 1
             except Exception:  # noqa: BLE001
                 continue
-            data = page.evaluate(_COLLECT_JS)
+            data = _settle_and_collect(page)
             imgs = _clean_image_urls(href, data["imgs"])[: config.MAX_IMAGES_PER_ARTIST]
             if not imgs:
                 continue  # no portfolio images -> not a real artist page (e.g. a stray nav link)

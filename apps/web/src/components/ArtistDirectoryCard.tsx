@@ -2,6 +2,7 @@ import Link from "next/link";
 import { displayImage } from "@/lib/images";
 import type { DirectoryArtist } from "@/lib/types";
 import FavoriteButton from "./FavoriteButton";
+import FetchImagesButton from "./FetchImagesButton";
 import TrashArtistButton from "./TrashArtistButton";
 
 /* Full-width editorial row per the browse design: rank number, large italic
@@ -62,6 +63,10 @@ export default function ArtistDirectoryCard({
               </a>
             )}
             <FavoriteButton slug={artist.slug} name={artist.name} />
+            {/* Dev-only: backfill images for an artist that has none yet (self-gates in prod). */}
+            {images.length === 0 && artist.instagram_handle && (
+              <FetchImagesButton artistId={artist.id} variant="icon" />
+            )}
             <TrashArtistButton id={artist.id} name={artist.name} />
           </span>
           {shop?.website && (

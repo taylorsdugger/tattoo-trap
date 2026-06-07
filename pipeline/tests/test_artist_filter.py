@@ -23,6 +23,9 @@ REAL_NAMES = [
     "Angel Antonio", "Ben Wahhh", "Beto Munoz", "Brian Kinsler", "Dan McDarrah",
     "Jason Longtin", "John Wayne", "Josh Grable", "Noe Rodriguez", "Saucy Espinosa",
     "Tj Brown", "Anne-Marie O'Neil",
+    # ALL-CAPS names: Wix/Squarespace themes commonly render artist names in CSS caps. The label
+    # arrives uppercased ("SCOTT␤LOTZ" on athinlinetattoo.com), and must still read as a person.
+    "SCOTT LOTZ", "DAN MCDARRAH", "NOE RODRIGUEZ",
 ]
 
 # Real junk the old `[A-Z][a-zA-Z]+...` regex accepted as "people".
@@ -57,6 +60,13 @@ def test_junk_labels_are_not_people(label):
         ("https://example.com/chicago/tattoo_artists/dan-mcdarrah/", "Dan McDarrah"),
         # person slug under an artist-hint directory, label is a non-name button
         ("https://example.com/artists/jane-doe", "Read Bio"),
+        # Wix flat single-segment artist page with an ALL-CAPS name label (the real
+        # athinlinetattoo.com/scottlotz case): no hint directory, so the name carries it.
+        ("https://example.com/scottlotz", "SCOTT LOTZ"),
+        # Mononym artist whose flat slug matches the label (the real artwithatattooed.com/bowser
+        # case): single-name handle, recovered because slugify("Bowser") == "bowser".
+        ("https://example.com/bowser", "Bowser"),
+        ("https://example.com/sailor", "SAILOR"),
     ],
 )
 def test_follows_real_artist_links(href, label):
@@ -78,6 +88,10 @@ def test_follows_real_artist_links(href, label):
         ("https://example.com/gallery", "OUR WORK"),
         ("https://example.com/tattoo-care-instructions/", "Tattoo Care Instructions"),
         ("https://othersite.com/team/real-name", "Real Name"),  # off-host
+        # Mononym guards: one-word label only counts when slugify(label) == the single segment.
+        ("https://example.com/team-4", "Bowser"),  # slug mismatch → not a corroborated mononym
+        ("https://example.com/flash", "Flash"),    # domain word in NON_NAME_WORDS
+        ("https://example.com/pages/bowser", "Bowser"),  # multi-segment, not a flat mononym path
     ],
 )
 def test_rejects_junk_links(href, label):

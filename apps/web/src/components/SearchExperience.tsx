@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { embedImage } from "@/lib/embedder";
 import { searchArtistsByImage } from "@/lib/search";
 import type { ArtistMatch, Metro } from "@/lib/types";
@@ -11,55 +11,133 @@ import { Label, RefPlate, btnGhostSm } from "./ui";
 
 type Screen = "home" | "metro" | "searching" | "results";
 
+// Persist a finished search in sessionStorage so navigating to an artist and
+// hitting back restores the results instead of dumping you on the home screen.
+const SESSION_KEY = "tt:lastSearch";
+
+type SavedSearch = {
+  embedding: number[];
+  metroSlug: string | null;
+  previewUrl: string | null;
+  results: ArtistMatch[];
+};
+
+function saveSession(s: SavedSearch) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  } catch {
+    // Quota exceeded (large preview) — keep the results, drop the thumbnail.
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, previewUrl: null }));
+    } catch {
+      /* give up silently; the live in-memory state still works this visit */
+    }
+  }
+}
+
+function loadSession(): SavedSearch | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as SavedSearch;
+    if (!Array.isArray(s.results) || !Array.isArray(s.embedding)) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+// Downscale the reference to a small JPEG data URL: small enough for sessionStorage
+// and it survives navigation (object URLs are revoked / don't persist).
+async function makeThumb(file: File, max = 512): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 export default function SearchExperience({ metros }: { metros: Metro[] }) {
   const [screen, setScreen] = useState<Screen>("home");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [embedding, setEmbedding] = useState<number[] | null>(null);
   const [metroSlug, setMetroSlug] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [detail, setDetail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ArtistMatch[]>([]);
 
+  // Restore the last search on mount (e.g. after viewing an artist and going back).
+  useEffect(() => {
+    const saved = loadSession();
+    if (!saved) return;
+    setEmbedding(saved.embedding);
+    setMetroSlug(saved.metroSlug);
+    setPreviewUrl(saved.previewUrl);
+    setResults(saved.results);
+    setScreen("results");
+  }, []);
+
   function metroName(slug: string | null) {
     if (!slug) return "All metros";
     return metros.find((m) => m.slug === slug)?.name ?? slug;
   }
 
-  function handleFile(f: File) {
+  async function handleFile(f: File) {
     setError(null);
     setResults([]);
+    setEmbedding(null);
     setFile(f);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(f));
+    try {
+      setPreviewUrl(await makeThumb(f));
+    } catch {
+      setPreviewUrl(URL.createObjectURL(f));
+    }
     setScreen("metro");
   }
 
   function reset() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
     setScreen("home");
     setFile(null);
     setPreviewUrl(null);
+    setEmbedding(null);
     setMetroSlug(null);
     setResults([]);
     setError(null);
   }
 
   async function runSearch(slug: string | null) {
-    if (!file) return;
+    // Need either a fresh file to embed or an embedding restored from a prior search.
+    if (!file && !embedding) return;
     setMetroSlug(slug);
     setError(null);
     setScreen("searching");
     setStep(0);
     setDetail(null);
     try {
-      const embedding = await embedImage(file, setDetail);
+      let emb = embedding;
+      if (!emb) {
+        emb = await embedImage(file!, setDetail);
+        setEmbedding(emb);
+      }
       setStep(1);
       setDetail(null);
-      const matches = await searchArtistsByImage(embedding, slug, 24);
+      const matches = await searchArtistsByImage(emb, slug, 24);
       setStep(2);
       setResults(matches);
       setScreen("results");
+      saveSession({ embedding: emb, metroSlug: slug, previewUrl, results: matches });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setScreen("metro");
