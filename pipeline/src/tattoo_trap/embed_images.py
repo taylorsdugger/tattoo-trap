@@ -93,61 +93,70 @@ def embed_all(limit: int | None = None) -> None:
     _embed_rows(rows, "across all pending candidates")
 
 
+def _embed_one(row: dict, embedder) -> bool:
+    """Process one candidate row. Returns True if it was embedded. Raises only on transient
+    errors (network/DB blips) — the caller skips those, leaving the row pending for next run."""
+    url = row["source_url"]
+    data = _download(url)
+    if data is _GONE:  # 4xx — dead URL, drop the row so it isn't retried every run
+        db.delete_image(row["id"])
+        return False
+    if not data:
+        return False
+    try:
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except (UnidentifiedImageError, OSError) as exc:
+        print(f"    ! not an image {url}: {exc}")
+        db.delete_image(row["id"])
+        return False
+
+    width, height = image.size
+    if width < 64 or height < 64:  # icons/spacers that slipped through — permanent, drop
+        db.delete_image(row["id"])
+        return False
+
+    vec = embedder.embed(image)
+    # Content gate: keep only actual tattoo images. Headshots, shop logos, social icons,
+    # storefronts and placeholders all embed fine but pollute the visual index, so delete
+    # the row (same policy as prune_nontattoo_images.py) instead of leaving it pending to
+    # be re-downloaded and re-embedded on every run.
+    if not is_tattoo(vec):
+        pos, neg = tattoo_scores(vec)
+        print(f"    · dropped non-tattoo (tattoo={pos:.2f} junk={neg:.2f}) {url}")
+        db.delete_image(row["id"])
+        return False
+
+    path = _storage_path(row["artist_id"], url)
+    db.upload_thumbnail(path, _make_thumbnail(image))
+    db.set_image_embedding(
+        row["id"],
+        storage_path=path,
+        width=width,
+        height=height,
+        embedding=vec,
+        model=config.EMBED_MODEL,
+    )
+    return True
+
+
 def _embed_rows(rows: list[dict], label: str) -> int:
     print(f"Embedding {len(rows)} image(s) {label}...")
 
     embedder = get_embedder()
     done = 0
     for row in rows:
-        url = row["source_url"]
-        data = _download(url)
-        if data is _GONE:  # 4xx — dead URL, drop the row so it isn't retried every run
-            db.delete_image(row["id"])
-            continue
-        if not data:
-            continue
+        # Isolate each image: a transient network/DB blip (e.g. Supabase connection reset on
+        # upload/delete) must skip this one row, not abort the whole batch. The row stays
+        # pending and is retried on the next run. Permanent drops are handled inside _embed_one.
         try:
-            image = Image.open(io.BytesIO(data))
-            image.load()
-        except (UnidentifiedImageError, OSError) as exc:
-            print(f"    ! not an image {url}: {exc}")
-            db.delete_image(row["id"])
+            if _embed_one(row, embedder):
+                done += 1
+                if done % 10 == 0:
+                    print(f"    embedded {done}/{len(rows)}")
+        except Exception as exc:  # noqa: BLE001 — transient; keep the batch alive
+            print(f"    ! skipped image {row['id']} ({row.get('source_url', '')[:60]}): {exc}")
             continue
-
-        width, height = image.size
-        if width < 64 or height < 64:  # icons/spacers that slipped through — permanent, drop
-            db.delete_image(row["id"])
-            continue
-
-        vec = embedder.embed(image)
-        # Content gate: keep only actual tattoo images. Headshots, shop logos, social icons,
-        # storefronts and placeholders all embed fine but pollute the visual index, so delete
-        # the row (same policy as prune_nontattoo_images.py) instead of leaving it pending to
-        # be re-downloaded and re-embedded on every run.
-        if not is_tattoo(vec):
-            pos, neg = tattoo_scores(vec)
-            print(f"    · dropped non-tattoo (tattoo={pos:.2f} junk={neg:.2f}) {url}")
-            db.delete_image(row["id"])
-            continue
-
-        path = _storage_path(row["artist_id"], url)
-        try:
-            db.upload_thumbnail(path, _make_thumbnail(image))
-        except Exception as exc:  # noqa: BLE001
-            print(f"    ! thumbnail upload failed {url}: {exc}")
-            continue
-
-        db.set_image_embedding(
-            row["id"],
-            storage_path=path,
-            width=width,
-            height=height,
-            embedding=vec,
-            model=config.EMBED_MODEL,
-        )
-        done += 1
-        if done % 10 == 0:
-            print(f"    embedded {done}/{len(rows)}")
 
     print(f"Done. Embedded {done} image(s).")
     return done
