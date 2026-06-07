@@ -24,12 +24,12 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
       onClick={() => router.push(`/artist/${match.artist_slug}`)}
       className="tt-row grid cursor-pointer gap-[18px] border-t border-line py-[30px] first:border-t-0"
     >
-      <div className="flex flex-wrap items-start gap-5">
-        <div className="flex min-w-[220px] flex-1 items-baseline gap-3.5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:gap-5">
+        <div className="flex min-w-0 flex-1 items-baseline gap-3 sm:gap-3.5">
           <span className="w-6 font-mono text-[13px] text-ink-faint">
             {String(rank).padStart(2, "0")}
           </span>
-          <div>
+          <div className="min-w-0">
             <h3 className="font-display text-[clamp(22px,3vw,30px)] font-[420] italic leading-[1.05] tracking-display text-ink">
               {match.artist_name}
             </h3>
@@ -39,7 +39,7 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
             </div>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-start gap-2 pl-9 sm:items-end sm:pl-0">
           <div className="flex items-center gap-[9px]">
             <Label>match</Label>
             <Meter v={match.similarity} />
@@ -75,7 +75,7 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
       </div>
 
       {images.length > 0 && (
-        <div className="grid grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           {images.map((img, i) => {
             const src = displayImage(img.storage_path);
             return (

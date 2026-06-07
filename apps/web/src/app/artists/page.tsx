@@ -42,19 +42,28 @@ async function getArtists(): Promise<DirectoryArtist[]> {
 export default async function ArtistsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ metro?: string; q?: string }>;
+  searchParams: Promise<{ metro?: string; q?: string; pics?: string }>;
 }) {
-  const { metro: metroFilter, q: nameQuery } = await searchParams;
+  const { metro: metroFilter, q: nameQuery, pics } = await searchParams;
   const [metros, allArtists] = await Promise.all([getMetros(), getArtists()]);
 
+  const picsOnly = pics === "1";
   const query = nameQuery?.trim().toLowerCase() ?? "";
   const artists = allArtists.filter((a) => {
     if (metroFilter && a.shop?.metro?.slug !== metroFilter) return false;
     if (query && !a.name.toLowerCase().includes(query)) return false;
+    if (picsOnly && !(a.images && a.images.length > 0)) return false;
     return true;
   });
 
   const activeMetro = metros.find((m) => m.slug === metroFilter) ?? null;
+
+  // Build a pics-toggle href that preserves the current metro/name filters.
+  const picsToggleParams = new URLSearchParams();
+  if (metroFilter) picsToggleParams.set("metro", metroFilter);
+  if (nameQuery?.trim()) picsToggleParams.set("q", nameQuery.trim());
+  if (!picsOnly) picsToggleParams.set("pics", "1");
+  const picsToggleHref = `/artists${picsToggleParams.toString() ? `?${picsToggleParams}` : ""}`;
 
   return (
     <div className="space-y-6 py-[clamp(28px,5vw,60px)]">
@@ -103,6 +112,19 @@ export default async function ArtistsPage({
           })}
         </div>
       )}
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={picsToggleHref}
+          className={`rounded-full border px-3 py-1 font-mono text-xs ${
+            picsOnly
+              ? "border-ink text-ink"
+              : "border-line text-ink-soft hover:border-ink hover:text-ink"
+          }`}
+        >
+          {picsOnly ? "✓ " : ""}With pics only
+        </Link>
+      </div>
 
       <NameSearch placeholder="Search artists by name…" />
 

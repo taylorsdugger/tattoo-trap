@@ -24,13 +24,13 @@ export default function ShopDirectoryCard({ shop, rank }: { shop: DirectoryShop;
 
   return (
     <article className="group grid gap-5 border-t border-line py-[clamp(28px,4vw,44px)] first:border-t-0">
-      <div className="flex flex-wrap items-start justify-between gap-5">
-        <div className="flex min-w-[260px] flex-1 items-baseline gap-4">
-          <span className="w-7 pt-2 font-mono text-[13px] text-ink-faint transition-colors duration-300 group-hover:text-ink">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
+        <div className="flex min-w-0 flex-1 items-baseline gap-3 sm:gap-4">
+          <span className="w-6 pt-1 font-mono text-[13px] text-ink-faint transition-colors duration-300 group-hover:text-ink sm:w-7 sm:pt-2">
             {String(rank).padStart(2, "0")}
           </span>
-          <div>
-            <span className="font-display text-[clamp(24px,3.2vw,36px)] font-[420] italic leading-[1.05] tracking-display text-ink">
+          <div className="min-w-0">
+            <span className="font-display text-[clamp(22px,3.2vw,36px)] font-[420] italic leading-[1.05] tracking-display text-ink">
               {shop.name}
             </span>
             <div className="mt-1.5 text-sm text-ink-soft">
@@ -53,9 +53,9 @@ export default function ShopDirectoryCard({ shop, rank }: { shop: DirectoryShop;
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-1.5 pt-1">
+        <div className="flex flex-col items-start gap-1.5 pl-9 sm:items-end sm:pl-0 sm:pt-1">
           {shop.metro?.name && (
-            <span className="font-mono text-xs uppercase tracking-[0.18em] text-ink-faint">
+            <span className="hidden font-mono text-xs uppercase tracking-[0.18em] text-ink-faint sm:inline">
               {shop.metro.name}
             </span>
           )}
