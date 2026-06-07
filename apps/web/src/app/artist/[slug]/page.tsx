@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import FavoriteButton from "@/components/FavoriteButton";
 import PortfolioGrid from "@/components/PortfolioGrid";
 import { Label, btnPrimary } from "@/components/ui";
 import { displayImage } from "@/lib/images";
@@ -30,8 +31,10 @@ export default async function ArtistPage({
   ]);
 
   const s = (shop ?? null) as Shop | null;
-  const imgs = (images ?? []) as PortfolioImage[];
-  const featured = imgs[0] ? displayImage(imgs[0].storage_path, imgs[0].source_url) : null;
+  // Only images we downloaded + thumbnailed count as real portfolio; un-embedded rows point at
+  // shop-site logos/headshots/dead links, so they're excluded from the featured slot and count.
+  const imgs = ((images ?? []) as PortfolioImage[]).filter((img) => img.storage_path);
+  const featured = imgs[0] ? displayImage(imgs[0].storage_path) : null;
   const firstName = a.name.split(" ")[0];
 
   return (
@@ -80,16 +83,19 @@ export default async function ArtistPage({
             </div>
           )}
         </div>
-        {a.instagram_handle && (
-          <a
-            href={`https://instagram.com/${a.instagram_handle}`}
-            target="_blank"
-            rel="noreferrer"
-            className={btnPrimary}
-          >
-            @{a.instagram_handle} ↗
-          </a>
-        )}
+        <div className="flex items-center gap-2.5">
+          <FavoriteButton slug={a.slug} name={a.name} variant="button" />
+          {a.instagram_handle && (
+            <a
+              href={`https://instagram.com/${a.instagram_handle}`}
+              target="_blank"
+              rel="noreferrer"
+              className={btnPrimary}
+            >
+              @{a.instagram_handle} ↗
+            </a>
+          )}
+        </div>
       </div>
 
       {/* meta strip */}

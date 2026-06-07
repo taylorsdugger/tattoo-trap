@@ -63,6 +63,25 @@ export type PortfolioImage = {
   height: number | null;
 };
 
+// Shape returned by the shop-directory query (shops with embedded metro + artists + sample images).
+export type DirectoryShop = {
+  id: number;
+  name: string;
+  address: string | null;
+  website: string | null;
+  instagram_handle: string | null;
+  metro: { name: string; slug: string } | null;
+  artists:
+    | {
+        id: number;
+        name: string;
+        slug: string;
+        instagram_handle: string | null;
+        images: { storage_path: string | null }[] | null;
+      }[]
+    | null;
+};
+
 // Shape returned by the artist-directory query (artists with embedded shop + metro + sample images).
 export type DirectoryArtist = {
   id: number;

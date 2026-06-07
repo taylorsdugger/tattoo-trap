@@ -2,14 +2,16 @@ import { displayImage } from "@/lib/images";
 import type { PortfolioImage } from "@/lib/types";
 
 export default function PortfolioGrid({ images }: { images: PortfolioImage[] }) {
-  if (images.length === 0) {
+  // Only images we actually downloaded + thumbnailed; un-embedded rows are shop-site junk.
+  const shown = images.filter((img) => img.storage_path);
+  if (shown.length === 0) {
     return <p className="text-sm text-ink-soft">No portfolio images yet.</p>;
   }
   // Masonry-style columns, per the design's artist-detail portfolio.
   return (
     <div className="gap-3.5 columns-[240px]">
-      {images.map((img) => {
-        const src = displayImage(img.storage_path, img.source_url);
+      {shown.map((img) => {
+        const src = displayImage(img.storage_path);
         if (!src) return null;
         return (
           <div

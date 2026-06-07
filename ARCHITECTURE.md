@@ -46,10 +46,18 @@ Python package `tattoo_trap`, run locally or on a cron. Uses the **service role*
 2. **`crawl_shops`** — Playwright visits each shop website; heuristics discover artist pages,
    Instagram handles, and portfolio image URLs. Respects robots.txt, rate-limits, sets a
    descriptive UA. Upserts `artists` and candidate image URLs.
-3. **`embed_images`** — downloads up to ~15 images/artist, downscales to ≤384px thumbnails
+3. **`scrape_instagram`** *(optional, paid)* — for each artist with an IG handle, fetch recent
+   public post image URLs via the Apify scraper and store them as `portfolio_images` candidates
+   (same rows the crawler produces). Sources sit behind one `ImageSource` interface
+   (`image_sources.py`), so a second backend (e.g. RapidAPI) is a drop-in. Spend is hard-capped
+   at the Apify free monthly credit: an in-stage guard reads **real** month-to-date spend from
+   the Apify API and stops with headroom, backstopped by the console max-monthly-spend limit.
+   IG CDN URLs expire in hours, so this runs back-to-back with embed (`make pipeline-ig`).
+4. **`embed_images`** — downloads up to ~15 images/artist, downscales to ≤384px thumbnails
    (uploaded to Supabase Storage), embeds the image with CLIP B/32, L2-normalizes, writes
-   `portfolio_images` rows with `embedding` + `embedding_model`.
-4. **`tag_artists`** *(post-MVP stub)* — one vision pass per artist → `artist_tags`.
+   `portfolio_images` rows with `embedding` + `embedding_model`. Source-agnostic: consumes any
+   unembedded candidate row regardless of whether the crawler or IG scraper produced it.
+5. **`tag_artists`** *(post-MVP stub)* — one vision pass per artist → `artist_tags`.
 
 ### Supabase (`supabase`)
 - Postgres + **pgvector** + Storage (bucket `portfolios`).
@@ -94,4 +102,6 @@ artist_tags (artist_id, tag)   -- post-MVP, supplemental only
 ## Security
 - Browser uses the **anon** key; RLS allows read-only on display tables and the search RPC.
 - The pipeline uses the **service role** key locally only (never shipped to the client).
-- Instagram is link-out only; no scraping (ToS + blocking).
+- Instagram: link-out for users; portfolio images ingested **offline** via a paid scraper
+  (`APIFY_TOKEN`, service-role context only), embedded then discarded — only ≤384px thumbnails
+  are stored, never original IG images.

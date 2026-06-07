@@ -18,10 +18,16 @@ import httpx
 from PIL import Image, UnidentifiedImageError
 
 from . import config, db
+from .content_filter import is_tattoo, tattoo_scores
 from .embedder import get_embedder
 
 
-def _download(url: str) -> bytes | None:
+# Sentinel for downloads that will never succeed (4xx) — the row should be deleted rather
+# than retried on every run. Transient failures (timeouts, 5xx) return None and stay pending.
+_GONE = object()
+
+
+def _download(url: str) -> bytes | object | None:
     try:
         resp = httpx.get(
             url,
@@ -31,6 +37,9 @@ def _download(url: str) -> bytes | None:
         )
         resp.raise_for_status()
         return resp.content
+    except httpx.HTTPStatusError as exc:
+        print(f"    ! download failed {url}: {exc}")
+        return _GONE if 400 <= exc.response.status_code < 500 else None
     except Exception as exc:  # noqa: BLE001
         print(f"    ! download failed {url}: {exc}")
         return None
@@ -65,6 +74,9 @@ def embed_metro(metro_slug: str) -> None:
     for row in rows:
         url = row["source_url"]
         data = _download(url)
+        if data is _GONE:  # 4xx — dead URL, drop the row so it isn't retried every run
+            db.delete_image(row["id"])
+            continue
         if not data:
             continue
         try:
@@ -72,13 +84,25 @@ def embed_metro(metro_slug: str) -> None:
             image.load()
         except (UnidentifiedImageError, OSError) as exc:
             print(f"    ! not an image {url}: {exc}")
+            db.delete_image(row["id"])
             continue
 
         width, height = image.size
-        if width < 64 or height < 64:  # skip icons/spacers that slipped through
+        if width < 64 or height < 64:  # icons/spacers that slipped through — permanent, drop
+            db.delete_image(row["id"])
             continue
 
         vec = embedder.embed(image)
+        # Content gate: keep only actual tattoo images. Headshots, shop logos, social icons,
+        # storefronts and placeholders all embed fine but pollute the visual index, so delete
+        # the row (same policy as prune_nontattoo_images.py) instead of leaving it pending to
+        # be re-downloaded and re-embedded on every run.
+        if not is_tattoo(vec):
+            pos, neg = tattoo_scores(vec)
+            print(f"    · dropped non-tattoo (tattoo={pos:.2f} junk={neg:.2f}) {url}")
+            db.delete_image(row["id"])
+            continue
+
         path = _storage_path(row["artist_id"], url)
         try:
             db.upload_thumbnail(path, _make_thumbnail(image))

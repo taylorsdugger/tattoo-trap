@@ -32,6 +32,15 @@ class Embedder:
         norm = float(np.linalg.norm(vec))
         return vec / (norm + 1e-12)
 
+    @torch.no_grad()
+    def embed_texts(self, prompts: list[str]) -> np.ndarray:
+        """Embed text prompts into the same CLIP space as images (L2-normalized rows). Used for
+        zero-shot content classification (e.g. "is this a tattoo?") against image embeddings."""
+        inputs = self.processor(text=prompts, return_tensors="pt", padding=True)
+        feats = self.model.get_text_features(**inputs).cpu().numpy().astype("float32")
+        norms = np.linalg.norm(feats, axis=1, keepdims=True)
+        return feats / (norms + 1e-12)
+
 
 @lru_cache(maxsize=1)
 def get_embedder() -> Embedder:

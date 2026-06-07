@@ -10,9 +10,14 @@ PIPELINE_PY  := $(PIPELINE_DIR)/.venv/bin/python   # used by both `uv sync` and 
 # Default metro for pipeline targets:  make pipeline METRO=peoria
 METRO ?= chicago
 
+# All metros, for `make pipeline-ig-all`. Add new metros here (and a seeds/<slug>.csv +
+# a `metros` row in Supabase). Override ad hoc: make pipeline-ig-all METROS="chicago peoria"
+METROS ?= chicago peoria iowa-city quad-cities
+
 .DEFAULT_GOAL := help
 .PHONY: help install web-install pipeline-install dev web-build web-start web-lint \
-        pipeline seed crawl embed pipeline-test supabase-push clean clean-web clean-pipeline
+        pipeline pipeline-ig pipeline-ig-all seed crawl scrape-ig probe-ig ig-status \
+        ig-count embed pipeline-test supabase-push clean clean-web clean-pipeline
 
 help: ## Show this help
 	@echo "Tattoo Trap — make targets:"
@@ -58,11 +63,36 @@ web-lint: ## Lint the web app
 
 pipeline: seed crawl embed ## Full pipeline for METRO: seed -> crawl -> embed
 
+pipeline-ig: scrape-ig embed ## IG backfill for METRO: scrape Instagram -> embed (run back-to-back; IG URLs expire)
+
+pipeline-ig-all: ## IG backfill across ALL $(METROS): scrape+embed each metro (budget-capped, de-duped)
+	@echo ">> Apify status before run:"; \
+	$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --status || true; \
+	for m in $(METROS); do \
+		echo ""; echo ">> ===== IG pipeline: $$m ====="; \
+		$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --metro $$m || exit $$?; \
+		$(PIPELINE_PY) -m tattoo_trap.embed_images --metro $$m || exit $$?; \
+	done; \
+	echo ""; echo ">> Apify status after run:"; \
+	$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --status || true
+
 seed: ## Seed shops for METRO from pipeline/seeds/<metro>.csv
 	$(PIPELINE_PY) -m tattoo_trap.seed_shops --metro $(METRO)
 
 crawl: ## Crawl shop sites for METRO (artists, IG handles, image URLs)
 	$(PIPELINE_PY) -m tattoo_trap.crawl_shops --metro $(METRO)
+
+scrape-ig: ## Source portfolio images from artists' Instagram for METRO (paid scraper, budget-capped)
+	$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --metro $(METRO)
+
+probe-ig: ## Quality check: fetch a few IG handles for METRO, print URLs, write nothing
+	$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --metro $(METRO) --probe
+
+ig-status: ## Show Apify month-to-date spend vs. cap (read-only, free)
+	$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --status
+
+ig-count: ## Show how many artists the puller would scrape for METRO + cycle estimate (no Apify calls)
+	$(PIPELINE_PY) -m tattoo_trap.scrape_instagram --metro $(METRO) --count
 
 embed: ## Download + embed portfolio images for METRO
 	$(PIPELINE_PY) -m tattoo_trap.embed_images --metro $(METRO)

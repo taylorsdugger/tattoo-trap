@@ -22,7 +22,7 @@ Answers the question: *"Given this tattoo inspiration, which artists near me mak
 | Query-image embedding | **In-browser** (transformers.js / ONNX, WebGPU+WASM fallback) | $0 server compute, no cold starts, infinite scale. Only ever embeds one image per search. One-time cached model download. |
 | Repo layout | **Monorepo**: `apps/web`, `pipeline`, `supabase` | Single source of truth for schema/types. |
 | Metros (seed) | **Chicago IL, Peoria IL, Iowa City IA, Quad Cities** (Davenport/Bettendorf IA + Rock Island/Moline IL) | Tight Midwest cluster to validate. Adding metros later = DB rows, no code change. |
-| Instagram | **Handle stored + link out, no scraping.** Embeddings from shop-site images. Manual curation (paste 1–3 image URLs) for thin artists. | IG ToS + active blocking make scraping fragile/risky. Profile `og:image` is only an avatar. |
+| Instagram | **Handle stored + link out + paid-scraper image ingest.** Portfolio images sourced from artists' public IG posts via Apify (`make scrape-ig`), embedded then **discarded** — only ≤384px thumbnails kept. Shop-site images remain a secondary source; manual curation still covers gaps. | Shop sites gave thin, low-res, stale images — bad for both browsing and CLIP match quality. IG is where artists post their best current work. A *paid* scraper buys away the fragility/blocking that made direct scraping risky (it runs the proxies). Transient processing of public images + thumbnails-only keeps it ToS-defensible and storage-light. Spend hard-capped at the Apify free monthly credit (console spend limit + in-stage real-spend guard). |
 | Embedding model | **CLIP ViT-B/32, 512-dim** | Smallest/fastest, well-supported in transformers.js. Browser `Xenova/clip-vit-base-patch32`, pipeline `openai/clip-vit-base-patch32`. Upgrade path: SigLIP (768-dim). |
 | Hosting | **Vercel Hobby + Supabase Free** | All free-tier. |
 
@@ -82,6 +82,13 @@ similarity, returns best-matching artists with sample images.
 - Google Places optional, behind a key, within free credit.
 
 ## Open risks
-- IG stays link-out only by design; manual curation covers thin artists.
 - Shop-site crawlers are heuristic — start permissive, refine per site.
 - Watch Supabase Storage; shrink/prune thumbnails if pressure grows.
+- **IG image quality:** validate with `make probe-ig` before a full backfill; the `is_tattoo`
+  gate filters non-tattoo posts but eats scrape budget doing so.
+- **IG URL expiry:** signed CDN URLs die in hours, so scrape → embed must run back-to-back
+  (`make pipeline-ig`); embed drops dead-URL rows. Already handled, but don't split the steps.
+- **Budget:** whole-DB backfill is ~$10 of Apify, but the free $5/mo credit covers ~140
+  artists/month — spread across two months it's $0. Hard-capped two ways so it can't overspend.
+  A RapidAPI fallback source (drop-in via `ImageSource`) can cover leftovers without waiting
+  for the monthly reset; not built yet (YAGNI until the wall is actually hit).

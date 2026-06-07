@@ -1,14 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { displayImage } from "@/lib/images";
 import type { ArtistMatch } from "@/lib/types";
+import FavoriteButton from "./FavoriteButton";
+import TrashArtistButton from "./TrashArtistButton";
 import { Label, Meter } from "./ui";
 
 export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: number }) {
   const router = useRouter();
+  // Results are client-side search state, so a trashed row hides locally rather than refetching.
+  const [trashed, setTrashed] = useState(false);
   const pct = Math.round(match.similarity * 100);
-  const images = (match.images ?? []).slice(0, 4);
+  const images = (match.images ?? []).filter((img) => img.storage_path).slice(0, 4);
+
+  if (trashed) return null;
 
   return (
     <article
@@ -38,6 +45,12 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
               {pct}
               <span className="text-ink-faint">%</span>
             </span>
+            <FavoriteButton slug={match.artist_slug} name={match.artist_name} />
+            <TrashArtistButton
+              id={match.artist_id}
+              name={match.artist_name}
+              onDeleted={() => setTrashed(true)}
+            />
           </div>
           {match.artist_instagram && (
             <a
@@ -56,7 +69,7 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
       {images.length > 0 && (
         <div className="grid grid-cols-4 gap-2.5">
           {images.map((img, i) => {
-            const src = displayImage(img.storage_path, img.source_url);
+            const src = displayImage(img.storage_path);
             return (
               <div
                 key={i}

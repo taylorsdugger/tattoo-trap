@@ -10,7 +10,8 @@ async function getMetros(): Promise<Metro[]> {
     const { data, error } = await supabase.from("metros").select("*").order("name");
     if (error) throw error;
     return (data ?? []) as Metro[];
-  } catch {
+  } catch (err) {
+    console.error("Failed to load metros:", err);
     return [];
   }
 }

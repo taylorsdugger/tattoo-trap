@@ -20,40 +20,67 @@ import httpx
 from playwright.sync_api import sync_playwright
 
 from . import config, db
+from .image_sources import normalize_handle
 
-ARTIST_HINTS = ("artist", "team", "staff", "our-artists", "our-team", "roster")
-NAV_JUNK = {
-    "home", "about", "contact", "book", "booking", "gallery", "portfolio", "shop",
-    "faq", "more", "menu", "aftercare", "pricing", "blog", "news", "merch",
+ARTIST_HINTS = ("artist", "artists", "team", "staff", "our-artists", "our-team", "roster", "crew")
+
+# Whole path segments that mark a page as editorial/navigational — never an individual
+# artist. Matched against entire segments (not substrings) so "/post/..." and "/services/..."
+# are caught while a real slug that merely contains these letters is not. This is what stops
+# blog posts like "/post/...-the-right-artist" (which contain the word "artist") and category
+# pages like "/services/portrait-tattoos-chicago" from being ingested as artists.
+NON_ARTIST_SEGMENTS = {
+    "post", "posts", "blog", "news", "article", "articles", "press", "story", "stories",
+    "tag", "tags", "category", "categories", "gallery", "galleries", "portfolio",
+    "services", "service", "faq", "faqs", "about", "contact", "book", "booking",
+    "appointment", "appointments", "consultation", "shop", "store", "cart", "checkout",
+    "account", "my", "m", "login", "register", "signup", "aftercare", "care", "pricing",
+    "price", "policy", "policies", "privacy", "terms", "reviews", "guide", "guides",
+    "styles", "specials", "events", "merch", "gift", "home", "menu", "blank",
 }
-# Any link whose label contains one of these *words* is not an artist. Token-based (not
-# substring) so it catches "About Us" / "Contact Us" / "Book Now" / "Artist Interview" /
-# "Bridal Makeup" without nuking real names (e.g. "Mark Booker" keeps the token "booker").
-JUNK_WORDS = {
-    "about", "contact", "book", "booking", "appointment", "appointments", "consultation",
-    "consultations", "interview", "bridal", "makeup", "faq", "gallery", "portfolio",
-    "home", "menu", "shop", "store", "aftercare", "pricing", "price", "blog", "news",
-    "merch", "press", "career", "careers", "review", "reviews", "hours", "location",
-    "locations", "directions", "guest", "events", "specials", "cart", "checkout", "gift",
-    "us", "faqs", "policy", "privacy", "terms",
+
+# Words that, if present in a link label, mean it is not a person's name: function words,
+# call-to-action verbs, and tattoo-domain category nouns. Token-based (whole words) so a real
+# surname is never nuked by a substring (e.g. "Mark Booker" is unaffected by "book").
+NON_NAME_WORDS = {
+    # function words
+    "our", "your", "my", "we", "us", "the", "a", "an", "all", "and", "of", "to", "for",
+    "with", "this", "that", "more", "new",
+    # call-to-action / imperative verbs (nav buttons read as "Verb Noun")
+    "view", "see", "read", "meet", "join", "create", "book", "booking", "shop", "get",
+    "find", "learn", "discover", "explore", "browse", "contact", "call", "visit", "tour",
+    # tattoo-domain / category nouns (page titles, not personal names)
+    "tattoo", "tattoos", "piercing", "piercings", "services", "service", "guide", "guides",
+    "account", "page", "collection", "gallery", "galleries", "portfolio", "work", "works",
+    "bio", "dates", "care", "instructions", "studio", "studios", "ink", "art", "arts",
+    "fx", "realism", "anime", "manga", "surrealism", "portrait", "japanese", "fine", "line",
+    "coverup", "custom", "special", "specials", "film", "themed", "nature", "culture", "pop",
+    "color", "colour", "private", "team", "staff", "artist", "artists", "interview",
+    "interviews", "flash", "merch", "policy", "privacy", "terms", "about", "faq", "faqs",
+    "pricing", "price", "hours", "location", "locations", "directions", "events", "blog",
+    "news", "press", "career", "careers", "review", "reviews", "aftercare", "appointment",
+    "appointments", "consultation", "consultations", "gift", "cart", "checkout", "home",
+    "menu", "store", "bridal", "makeup", "guest",
 }
+
+# A single token in a person's name: starts uppercase AND contains at least one lowercase
+# letter — so ALL-CAPS nav labels ("VIEW OUR SERVICES", "ANIME AND MANGA") are rejected, which
+# the old `[A-Z][a-zA-Z]+` regex let straight through. Allows internal caps, apostrophes,
+# hyphens, periods: McDarrah, O'Neil, Anne-Marie, DeLuca.
+NAME_TOKEN_RE = re.compile(r"^[A-Z][A-Za-z'’.\-]*[a-z][A-Za-z'’.\-]*$")
+# A bare initial like "J" or "J." — allowed alongside name tokens but never the whole name.
+INITIAL_RE = re.compile(r"^[A-Z]\.?$")
 SKIP_IMG = (
     "logo", "icon", "sprite", "favicon", "avatar", "placeholder",
     # non-art site chrome / headshots that pollute the visual index
     "banner", "profile", "header", "exterior", "interior", "storefront",
     "flash-wall", "-sign", "signage",  # "-sign" not "sign" so it won't match "designs"
+    "pixel.wp.com",  # WordPress stats tracking gif
+    "googleusercontent.com/sitesv/",  # Google Sites images 403 anything but a browser session
 )
 # WordPress (and similar) emit resized copies like `foo-150x150.jpg` alongside the original
 # `foo.jpg`. Strip the `-WxH` suffix so we embed the full-size image once, not tiny dupes.
 SIZE_SUFFIX_RE = re.compile(r"-\d{2,4}x\d{2,4}(?=\.(?:jpe?g|png|webp|gif)\b)", re.IGNORECASE)
-# Generic non-artist page labels/paths that the person-name heuristic otherwise mistakes for
-# artists (e.g. "Privacy Policy", "Product Photography").
-STOP_PHRASES = (
-    "privacy", "policy", "terms", "cookie", "shipping", "returns", "return",
-    "photography", "videos", "video", "imagery", "infographic", "checkout", "cart",
-    "gift", "career", "press",
-)
-PERSON_RE = re.compile(r"^[A-Z][a-zA-Z.''-]+(?:\s+[A-Z][a-zA-Z.''-]+){1,2}$")
 IG_RE = re.compile(r"instagram\.com/([A-Za-z0-9_.]+)")
 
 # Collect every anchor (href + text) and image candidate (src/srcset) on a page.
@@ -65,7 +92,10 @@ _COLLECT_JS = """
   const imgs = [];
   for (const img of document.querySelectorAll('img')) {
     const ss = img.getAttribute('srcset');
-    if (ss) { const parts = ss.split(',').map(s => s.trim().split(' ')[0]); if (parts.length) imgs.push(parts[parts.length-1]); }
+    // Split candidates on ",<space>" only — Wix image URLs contain bare commas in the path
+    // ("/v1/fill/w_39,h_39,...,quality_auto/x.png"); splitting on "," shatters those into
+    // relative fragments that urljoin then 404s against the shop domain.
+    if (ss) { const parts = ss.split(/,\\s+/).map(s => s.trim().split(' ')[0]); if (parts.length) imgs.push(parts[parts.length-1]); }
     const src = img.currentSrc || img.src || img.getAttribute('data-src');
     if (src) imgs.push(src);
   }
@@ -143,6 +173,29 @@ def _instagram_handle(anchors: list[dict]) -> str | None:
     return None
 
 
+def _is_person_name(text: str) -> bool:
+    """True only for a plausible human name: 2–3 Title-Case tokens, no nav/domain words, not
+    ALL-CAPS. Deliberately strict — a false negative just falls back to the shop house-artist,
+    whereas a false positive ingests a junk "artist" (the failure we're hardening against)."""
+    t = (text or "").strip()
+    if not t or len(t) > 40:
+        return False
+    tokens = t.split()
+    if not (2 <= len(tokens) <= 3):
+        return False
+    if {w for w in re.split(r"[^a-z]+", t.lower()) if w} & NON_NAME_WORDS:
+        return False
+    name_tokens = 0
+    for tok in tokens:
+        if NAME_TOKEN_RE.match(tok):
+            name_tokens += 1
+        elif INITIAL_RE.match(tok):
+            continue  # an initial is allowed, but doesn't count toward the 2-token minimum
+        else:
+            return False
+    return name_tokens >= 2
+
+
 def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     href = href.decode("utf-8", "ignore") if isinstance(href, bytes) else str(href or "")
     text = text.decode("utf-8", "ignore") if isinstance(text, bytes) else str(text or "")
@@ -153,26 +206,26 @@ def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     path = urlparse(href).path.lower().strip("/")
     if not path:
         return False
-    label = (text or "").strip().lower()
-    label_words = {w for w in re.split(r"[^a-z]+", label) if w}
-    if label in NAV_JUNK or (label_words & JUNK_WORDS):
+    segs = [s for s in path.split("/") if s]
+    # Editorial / navigational / account pages are never an individual artist.
+    if any(seg in NON_ARTIST_SEGMENTS for seg in segs):
         return False
-    if any(p in label or p in path for p in STOP_PHRASES):
-        return False
-    # individual artist page: an artist-hint segment with something after it,
-    # or a person-looking link label.
-    has_hint = any(h in path for h in ARTIST_HINTS)
-    deep = path.count("/") >= 1
-    person = bool(PERSON_RE.match((text or "").strip()))
-    return (has_hint and deep) or person
+    # A real artist listing links the person under a *hint directory*, e.g. /artists/john-doe
+    # or /our-team/jane — the hint is a PARENT segment, not the final one. Requiring the hint
+    # in a parent segment stops blog slugs that merely end in "...-artist" from matching.
+    hint_dir = any(h in seg for seg in segs[:-1] for h in ARTIST_HINTS)
+    return _is_person_name(text.strip()) or hint_dir
 
 
 def _artist_name(text: str, href: str) -> str:
     t = (text or "").strip()
-    if t and len(t) <= 60 and t.lower() not in NAV_JUNK:
+    if _is_person_name(t):
         return t
+    # Label wasn't a clean name (e.g. a "Read Bio" button under an artist directory) — derive
+    # from the URL's final slug, which is usually the person: /artists/jane-doe -> "Jane Doe".
     seg = urlparse(href).path.rstrip("/").split("/")[-1]
-    return seg.replace("-", " ").replace("_", " ").title() or "Artist"
+    slug_name = seg.replace("-", " ").replace("_", " ").strip().title()
+    return slug_name or (t if 0 < len(t) <= 60 else "Artist")
 
 
 def crawl_shop(page, shop: dict) -> int:
@@ -181,6 +234,26 @@ def crawl_shop(page, shop: dict) -> int:
     if not website:
         return 0
     base_host = urlparse(website).netloc
+
+    # Instagram-only shop (website IS an instagram.com profile): crawling is pointless
+    # (robots.txt disallows it anyway), but the URL itself carries the handle. Record it on
+    # the shop and create the house artist so the Instagram scrape stage picks it up.
+    if base_host.lower().removeprefix("www.") == "instagram.com":
+        handle = normalize_handle(website)
+        if handle:
+            if not shop.get("instagram_handle"):
+                db.client().table("shops").update({"instagram_handle": handle}).eq(
+                    "id", shop["id"]
+                ).execute()
+            db.upsert_artist(
+                shop_id=shop["id"],
+                name=shop["name"],
+                slug=db.slugify(shop["name"]),
+                instagram_handle=handle,
+                profile_url=website,
+            )
+            print(f"  instagram-only site; recorded handle @{handle} for IG scrape stage")
+        return 0
 
     if not _can_fetch(website):
         print(f"  ! robots.txt disallows {website}; skipping")
@@ -253,11 +326,16 @@ def crawl_shop(page, shop: dict) -> int:
     return stored
 
 
-def crawl_metro(metro_slug: str) -> None:
+def crawl_metro(metro_slug: str, *, new_only: bool = False) -> None:
     metro = db.get_metro_by_slug(metro_slug)
     if not metro:
         raise SystemExit(f"Metro '{metro_slug}' not found. Seed it first.")
     shops = db.shops_for_metro(metro["id"])
+    if new_only:
+        # Skip shops that already produced artists — for incremental runs after a broader
+        # seed. Shops whose earlier crawl found nothing are retried (site may have failed).
+        crawled = {a["shop_id"] for a in db.artists_for_shops([s["id"] for s in shops])}
+        shops = [s for s in shops if s["id"] not in crawled]
     print(f"Crawling {len(shops)} shop(s) in '{metro_slug}'...")
 
     with sync_playwright() as p:
@@ -278,8 +356,13 @@ def crawl_metro(metro_slug: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Crawl shop sites for artists + images.")
     parser.add_argument("--metro", required=True, help="metro slug, e.g. chicago")
+    parser.add_argument(
+        "--new-only",
+        action="store_true",
+        help="only crawl shops with no artists yet (incremental run after a broader seed)",
+    )
     args = parser.parse_args()
-    crawl_metro(args.metro)
+    crawl_metro(args.metro, new_only=args.new_only)
 
 
 if __name__ == "__main__":

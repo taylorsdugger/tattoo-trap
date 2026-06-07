@@ -139,6 +139,39 @@ def artists_for_shops(shop_ids: Iterable[int]) -> list[dict[str, Any]]:
     return res.data or []
 
 
+def mark_ig_scraped(artist_id: int) -> None:
+    """Stamp an artist as IG-attempted (success OR empty) so dead handles aren't re-billed."""
+    client().table("artists").update({"ig_scraped_at": "now()"}).eq("id", artist_id).execute()
+
+
+def ig_scraped_artist_ids(artist_ids: Iterable[int]) -> set[int]:
+    """Subset of `artist_ids` already attempted by the IG puller (ig_scraped_at is set)."""
+    ids = list(artist_ids)
+    if not ids:
+        return set()
+    res = (
+        client()
+        .table("artists")
+        .select("id")
+        .in_("id", ids)
+        .not_.is_("ig_scraped_at", "null")
+        .execute()
+    )
+    return {row["id"] for row in (res.data or [])}
+
+
+def image_counts_for_artists(artist_ids: Iterable[int]) -> dict[int, int]:
+    """Map artist_id -> number of portfolio_images, for 'thinnest first' scrape ordering."""
+    ids = list(artist_ids)
+    if not ids:
+        return {}
+    res = client().table("portfolio_images").select("artist_id").in_("artist_id", ids).execute()
+    counts: dict[int, int] = {}
+    for row in res.data or []:
+        counts[row["artist_id"]] = counts.get(row["artist_id"], 0) + 1
+    return counts
+
+
 # --- portfolio_images ------------------------------------------------------------------
 
 def add_candidate_image(artist_id: int, source_url: str) -> None:
@@ -150,6 +183,28 @@ def add_candidate_image(artist_id: int, source_url: str) -> None:
     except Exception as exc:  # noqa: BLE001 — unique violation on (artist_id, source_url)
         if "duplicate" not in str(exc).lower() and "23505" not in str(exc):
             raise
+
+
+def artists_with_instagram_images(artist_ids: Iterable[int]) -> set[int]:
+    """Subset of `artist_ids` that already have at least one IG-sourced portfolio image.
+
+    IG CDN URLs are signed and change every scrape, so they can't be deduped by `source_url` —
+    re-scraping an artist would create duplicate images/embeddings. Detect prior IG ingest by
+    the CDN host (`cdninstagram`/`fbcdn`), which is retained in `source_url` after embedding,
+    and skip those artists. `source_url` survives embedding, so this catches both pending and
+    already-embedded IG rows."""
+    ids = list(artist_ids)
+    if not ids:
+        return set()
+    res = (
+        client()
+        .table("portfolio_images")
+        .select("artist_id, source_url")
+        .in_("artist_id", ids)
+        .or_("source_url.ilike.%cdninstagram%,source_url.ilike.%fbcdn%")
+        .execute()
+    )
+    return {row["artist_id"] for row in (res.data or [])}
 
 
 def unembedded_images_for_artists(artist_ids: Iterable[int]) -> list[dict[str, Any]]:
@@ -185,6 +240,11 @@ def set_image_embedding(
             "embedding_model": model,
         }
     ).eq("id", image_id).execute()
+
+
+def delete_image(image_id: int) -> None:
+    """Remove a candidate image row (dead URL, undecodable, too small, or non-tattoo)."""
+    client().table("portfolio_images").delete().eq("id", image_id).execute()
 
 
 # --- storage ---------------------------------------------------------------------------
