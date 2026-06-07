@@ -70,11 +70,27 @@ def embed_metro(metro_slug: str) -> None:
     _embed_rows(rows, f"across {len(artists)} artist(s) in '{metro_slug}'")
 
 
+def embed_shop(shop_id: int) -> None:
+    """Embed pending candidates for every artist under one shop — used by the web app's
+    're-crawl shop' button so a freshly re-crawled shop's images appear in one pass."""
+    artists = db.artists_for_shops([shop_id])
+    rows = db.unembedded_images_for_artists([a["id"] for a in artists])
+    _embed_rows(rows, f"across {len(artists)} artist(s) in shop {shop_id}")
+
+
 def embed_artist(artist_id: int) -> None:
     """Embed just one artist's pending candidates — used by the web app's on-demand
     'fetch images' button so a single artist's images appear without a full metro run."""
     rows = db.unembedded_images_for_artists([artist_id])
     _embed_rows(rows, f"for artist {artist_id}")
+
+
+def embed_all(limit: int | None = None) -> None:
+    """Embed every pending candidate across all artists — the scheduled worker's entry point.
+    Drains whatever the live 'fetch images' button queued (which can't embed on serverless).
+    `limit` caps one batch so a run stays bounded."""
+    rows = db.unembedded_images(limit)
+    _embed_rows(rows, "across all pending candidates")
 
 
 def _embed_rows(rows: list[dict], label: str) -> int:
@@ -141,13 +157,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Download + embed candidate portfolio images.")
     parser.add_argument("--metro", help="metro slug, e.g. chicago")
     parser.add_argument("--artist", type=int, help="single artist id (on-demand backfill)")
+    parser.add_argument("--shop", type=int, help="single shop id (all its artists)")
+    parser.add_argument(
+        "--all", action="store_true", help="every pending candidate (scheduled worker / drain queue)"
+    )
+    parser.add_argument("--limit", type=int, help="cap rows per run (only with --all)")
     args = parser.parse_args()
-    if args.artist:
+    if args.all:
+        embed_all(args.limit)
+    elif args.artist:
         embed_artist(args.artist)
+    elif args.shop:
+        embed_shop(args.shop)
     elif args.metro:
         embed_metro(args.metro)
     else:
-        parser.error("one of --metro or --artist is required")
+        parser.error("one of --metro, --shop, --artist or --all is required")
 
 
 if __name__ == "__main__":

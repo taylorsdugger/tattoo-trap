@@ -61,6 +61,9 @@ NON_NAME_WORDS = {
     "news", "press", "career", "careers", "review", "reviews", "aftercare", "appointment",
     "appointments", "consultation", "consultations", "gift", "cart", "checkout", "home",
     "menu", "store", "bridal", "makeup", "guest",
+    # site CTA / application buttons rendered in ALL-CAPS (e.g. "APPLY ONLINE") — these slip
+    # past the name check now that all-caps tokens qualify, and falsely look like a 2-token name.
+    "apply", "online", "now", "submit", "form", "application", "apprentice", "hiring", "join",
 }
 
 # A single token in a person's name: starts uppercase, is ≥2 letters, and ends in a letter.
@@ -203,13 +206,34 @@ def _clean_image_urls(base: str, raw: list[str]) -> list[str]:
 
 
 def _instagram_handle(anchors: list[dict]) -> str | None:
+    handles = _instagram_profiles(anchors)
+    return handles[0] if handles else None
+
+
+def _instagram_profiles(anchors: list[dict]) -> list[str]:
+    """Distinct Instagram *profile* handles linked on a page, in document order. Skips IG paths
+    that aren't profiles (/p/, /reel/, /explore/...). Small shops (Weebly/Wix) often list their
+    whole roster as nothing but a row of IG icons — each handle is then a separate artist."""
+    out, seen = [], set()
     for a in anchors:
         m = IG_RE.search(a.get("href", ""))
-        if m:
-            handle = m.group(1).strip("/.")
-            if handle and handle.lower() not in ("p", "explore", "reel", "reels"):
-                return handle
-    return None
+        if not m:
+            continue
+        handle = m.group(1).strip("/.")
+        low = handle.lower()
+        if not handle or low in config.IG_RESERVED_HANDLES or low in seen:
+            continue
+        seen.add(low)
+        out.append(handle)
+    return out
+
+
+def _name_from_handle(handle: str) -> str:
+    """Best-effort display name from a bare IG handle when the link carries no readable text
+    (icon-only social links). 'artbylikah_' -> 'Artbylikah', 'ellis.king' -> 'Ellis King'. Rough
+    but editable; the point is that the artist exists so the IG scrape stage fills their work."""
+    name = re.sub(r"[._]+", " ", handle).strip().title()
+    return name or handle
 
 
 def _is_person_name(text: str) -> bool:
@@ -367,34 +391,39 @@ def crawl_shop(page, shop: dict) -> int:
                 db.add_candidate_image(artist["id"], u)
                 stored += 1
     else:
-        # Fallback: treat the shop as a single "house" artist and use homepage images.
-        artist = db.upsert_artist(
-            shop_id=shop["id"],
-            name=shop["name"],
-            slug=db.slugify(shop["name"]),
-            instagram_handle=shop.get("instagram_handle"),
-            profile_url=website,
-        )
-        imgs = _clean_image_urls(website, home["imgs"])[: config.MAX_IMAGES_PER_ARTIST]
-        for u in imgs:
-            db.add_candidate_image(artist["id"], u)
-            stored += 1
+        # No on-site artist pages. Many small shops (Weebly/Wix) instead list their roster as a
+        # row of Instagram profile links. If we see 2+ distinct profile handles, each is its own
+        # artist — create one per handle so the IG scrape stage fills their portfolios. (One
+        # handle is just the shop's own IG, so that stays the house-artist case below.)
+        profiles = _instagram_profiles(home["anchors"])
+        if len(profiles) >= 2:
+            for handle in profiles:
+                db.upsert_artist(
+                    shop_id=shop["id"],
+                    name=_name_from_handle(handle),
+                    slug=db.slugify(f"{shop['name']}-{handle}"),
+                    instagram_handle=handle,
+                    profile_url=f"https://www.instagram.com/{handle}/",
+                )
+        else:
+            # House-artist fallback: one artist for the shop, seeded with homepage images.
+            artist = db.upsert_artist(
+                shop_id=shop["id"],
+                name=shop["name"],
+                slug=db.slugify(shop["name"]),
+                instagram_handle=shop.get("instagram_handle"),
+                profile_url=website,
+            )
+            imgs = _clean_image_urls(website, home["imgs"])[: config.MAX_IMAGES_PER_ARTIST]
+            for u in imgs:
+                db.add_candidate_image(artist["id"], u)
+                stored += 1
 
     return stored
 
 
-def crawl_metro(metro_slug: str, *, new_only: bool = False) -> None:
-    metro = db.get_metro_by_slug(metro_slug)
-    if not metro:
-        raise SystemExit(f"Metro '{metro_slug}' not found. Seed it first.")
-    shops = db.shops_for_metro(metro["id"])
-    if new_only:
-        # Skip shops that already produced artists — for incremental runs after a broader
-        # seed. Shops whose earlier crawl found nothing are retried (site may have failed).
-        crawled = {a["shop_id"] for a in db.artists_for_shops([s["id"] for s in shops])}
-        shops = [s for s in shops if s["id"] not in crawled]
-    print(f"Crawling {len(shops)} shop(s) in '{metro_slug}'...")
-
+def _crawl_shops(shops: list[dict]) -> None:
+    """Open one headless browser and crawl each shop through it."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(user_agent=config.USER_AGENT)
@@ -410,16 +439,46 @@ def crawl_metro(metro_slug: str, *, new_only: bool = False) -> None:
         browser.close()
 
 
+def crawl_metro(metro_slug: str, *, new_only: bool = False) -> None:
+    metro = db.get_metro_by_slug(metro_slug)
+    if not metro:
+        raise SystemExit(f"Metro '{metro_slug}' not found. Seed it first.")
+    shops = db.shops_for_metro(metro["id"])
+    if new_only:
+        # Skip shops that already produced artists — for incremental runs after a broader
+        # seed. Shops whose earlier crawl found nothing are retried (site may have failed).
+        crawled = {a["shop_id"] for a in db.artists_for_shops([s["id"] for s in shops])}
+        shops = [s for s in shops if s["id"] not in crawled]
+    print(f"Crawling {len(shops)} shop(s) in '{metro_slug}'...")
+    _crawl_shops(shops)
+
+
+def crawl_one_shop(shop_id: int) -> None:
+    """Re-crawl a single shop by id — used by the web app's 're-crawl shop' button to re-ingest
+    one site after a crawler change, without re-running a whole metro."""
+    shop = db.get_shop(shop_id)
+    if not shop:
+        raise SystemExit(f"Shop {shop_id} not found.")
+    print(f"Crawling 1 shop (id {shop_id})...")
+    _crawl_shops([shop])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Crawl shop sites for artists + images.")
-    parser.add_argument("--metro", required=True, help="metro slug, e.g. chicago")
+    parser.add_argument("--metro", help="metro slug, e.g. chicago")
+    parser.add_argument("--shop", type=int, help="single shop id (re-crawl one site)")
     parser.add_argument(
         "--new-only",
         action="store_true",
         help="only crawl shops with no artists yet (incremental run after a broader seed)",
     )
     args = parser.parse_args()
-    crawl_metro(args.metro, new_only=args.new_only)
+    if args.shop:
+        crawl_one_shop(args.shop)
+    elif args.metro:
+        crawl_metro(args.metro, new_only=args.new_only)
+    else:
+        parser.error("one of --metro or --shop is required")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import { displayImage } from "@/lib/images";
 import type { ArtistMatch } from "@/lib/types";
 import FavoriteButton from "./FavoriteButton";
 import FetchImagesButton from "./FetchImagesButton";
+import RecrawlShopButton from "./RecrawlShopButton";
 import TrashArtistButton from "./TrashArtistButton";
 import { Label, Meter } from "./ui";
 
@@ -51,6 +52,8 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
             {images.length === 0 && match.artist_instagram && (
               <FetchImagesButton artistId={match.artist_id} variant="icon" />
             )}
+            {/* Dev-only: re-crawl this artist's shop website (picks up new artists + images). */}
+            <RecrawlShopButton artistId={match.artist_id} />
             <TrashArtistButton
               id={match.artist_id}
               name={match.artist_name}

@@ -17,7 +17,7 @@ METROS ?= chicago peoria iowa-city quad-cities
 .DEFAULT_GOAL := help
 .PHONY: help install web-install pipeline-install dev web-build web-start web-lint \
         pipeline pipeline-ig pipeline-ig-all seed crawl scrape-ig probe-ig ig-status \
-        ig-count embed pipeline-test supabase-push clean clean-web clean-pipeline
+        ig-count embed embed-pending pipeline-test supabase-push clean clean-web clean-pipeline
 
 help: ## Show this help
 	@echo "Tattoo Trap — make targets:"
@@ -96,6 +96,9 @@ ig-count: ## Show how many artists the puller would scrape for METRO + cycle est
 
 embed: ## Download + embed portfolio images for METRO
 	$(PIPELINE_PY) -m tattoo_trap.embed_images --metro $(METRO)
+
+embed-pending: ## Embed ALL pending candidates (drains what the live "fetch images" button queued)
+	$(PIPELINE_PY) -m tattoo_trap.embed_images --all
 
 pipeline-test: ## Run pipeline tests (CLIP parity / invariants)
 	$(PIPELINE_PY) -m pytest -q

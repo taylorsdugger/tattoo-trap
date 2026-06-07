@@ -103,6 +103,11 @@ def shops_for_metro(metro_id: int) -> list[dict[str, Any]]:
     return res.data or []
 
 
+def get_shop(shop_id: int) -> Optional[dict[str, Any]]:
+    res = client().table("shops").select("*").eq("id", shop_id).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
 # --- artists ---------------------------------------------------------------------------
 
 def upsert_artist(
@@ -219,6 +224,22 @@ def unembedded_images_for_artists(artist_ids: Iterable[int]) -> list[dict[str, A
         .is_("embedding", "null")
         .execute()
     )
+    return res.data or []
+
+
+def unembedded_images(limit: int | None = None) -> list[dict[str, Any]]:
+    """Every pending candidate across all artists/metros — used by the scheduled embed worker
+    (`embed_images --all`) to drain whatever the on-demand 'fetch images' button queued on live.
+    Mirrors `unembedded_images_for_artists` without the artist filter; `limit` caps a batch."""
+    query = (
+        client()
+        .table("portfolio_images")
+        .select("*")
+        .is_("embedding", "null")
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    res = query.execute()
     return res.data or []
 
 

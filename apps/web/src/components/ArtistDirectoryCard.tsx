@@ -3,6 +3,7 @@ import { displayImage } from "@/lib/images";
 import type { DirectoryArtist } from "@/lib/types";
 import FavoriteButton from "./FavoriteButton";
 import FetchImagesButton from "./FetchImagesButton";
+import RecrawlShopButton from "./RecrawlShopButton";
 import TrashArtistButton from "./TrashArtistButton";
 
 /* Full-width editorial row per the browse design: rank number, large italic
@@ -67,6 +68,8 @@ export default function ArtistDirectoryCard({
             {images.length === 0 && artist.instagram_handle && (
               <FetchImagesButton artistId={artist.id} variant="icon" />
             )}
+            {/* Dev-only: re-crawl this artist's shop website (picks up new artists + images). */}
+            <RecrawlShopButton artistId={artist.id} />
             <TrashArtistButton id={artist.id} name={artist.name} />
           </span>
           {shop?.website && (

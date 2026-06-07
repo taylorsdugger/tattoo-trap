@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAdminToken } from "@/lib/admin";
 import { btnPrimary } from "./ui";
 
 /* Dev-only curation control: source portfolio image candidates for one artist from RapidAPI
    (no Apify credits). Two shapes:
      - "full"  → big labelled button + status line, for the artist detail page's empty portfolio.
      - "icon"  → compact 9×9 glyph for the list cards' action row (next to favorite/trash).
-   Both self-gate to dev — they render nothing in production, and the route 404s there anyway.
+   Both self-gate to dev OR an admin (a stored `?admin=<token>` — see lib/admin.ts): they render
+   nothing for normal visitors, and the route 404s for them anyway. The admin token is replayed as
+   the `x-admin-token` header so the route authorizes the request on live.
 
    This is Option A: it only queues `portfolio_images` candidates (source_url). They become
-   visible thumbnails after the next `embed_images.py` run, so the feedback says so rather than
-   promising instant images. */
+   visible thumbnails after the next `embed_images.py` run (inline locally, or via the scheduled
+   worker on live), so the feedback says so rather than promising instant images. */
 export default function FetchImagesButton({
   artistId,
   variant = "full",
@@ -26,16 +29,20 @@ export default function FetchImagesButton({
   className?: string;
 }) {
   const router = useRouter();
+  const adminToken = useAdminToken();
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [message, setMessage] = useState<string>("");
 
-  if (process.env.NODE_ENV !== "development") return null;
+  // Show in dev, or on live once the admin token is present. Renders null until the token effect
+  // settles (and forever for normal visitors), so nothing flashes for the public.
+  const enabled = process.env.NODE_ENV === "development" || !!adminToken;
+  if (!enabled) return null;
 
   async function run(): Promise<{ ok: boolean; message: string }> {
     try {
       const res = await fetch("/api/fetch-images", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-admin-token": adminToken ?? "" },
         body: JSON.stringify({ id: artistId }),
       });
       const data = await res.json().catch(() => ({}));

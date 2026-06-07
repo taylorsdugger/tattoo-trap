@@ -7,15 +7,16 @@ import { fetchInstagramImageUrls, normalizeHandle } from "@/lib/instagram";
 
 /* Run the Python embed step for one artist so the queued candidates turn into displayable
    thumbnails immediately — same work as `make embed`, scoped to this artist via --artist.
-   Dev-only and best-effort: this route already 404s in prod, and the pipeline lives on the same
-   machine as `next dev`. If the venv/process isn't there, we still return the queued count so
-   the operator can fall back to `make embed`. */
-function embedArtist(artistId: number): Promise<{ ok: boolean; detail: string }> {
+   Best-effort, and crucially OPTIONAL: on a serverless host (Vercel) there is no pipeline venv,
+   so `ran` comes back false and the caller reports "queued, embed runs later". Locally the venv
+   exists and we embed inline. The `ran` flag lets the caller distinguish "embed deferred to the
+   scheduled worker" (normal, on live) from "embed ran but failed" (a real problem, on dev). */
+function embedArtist(artistId: number): Promise<{ ran: boolean; ok: boolean; detail: string }> {
   // next dev runs with cwd = apps/web; the pipeline is at <repo>/pipeline.
   const pipelineDir = path.resolve(process.cwd(), "..", "..", "pipeline");
   const py = path.join(pipelineDir, ".venv", "bin", "python");
   if (!existsSync(py)) {
-    return Promise.resolve({ ok: false, detail: `pipeline venv not found at ${py}` });
+    return Promise.resolve({ ran: false, ok: false, detail: `pipeline venv not found at ${py}` });
   }
   return new Promise((resolve) => {
     const child = spawn(py, ["-m", "tattoo_trap.embed_images", "--artist", String(artistId)], {
@@ -27,11 +28,11 @@ function embedArtist(artistId: number): Promise<{ ok: boolean; detail: string }>
     const timer = setTimeout(() => child.kill("SIGKILL"), 180_000);
     child.on("error", (e) => {
       clearTimeout(timer);
-      resolve({ ok: false, detail: e.message });
+      resolve({ ran: true, ok: false, detail: e.message });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ ok: code === 0, detail: out.slice(-500) });
+      resolve({ ran: true, ok: code === 0, detail: out.slice(-500) });
     });
   });
 }
@@ -45,12 +46,20 @@ function embedArtist(artistId: number): Promise<{ ok: boolean; detail: string }>
    `embed_images.py` stage downloads, content-gates, thumbnails and embeds them, exactly as it
    does for Apify/crawler rows. Nothing displays until that embed run completes.
 
-   Like delete-artist, this requires SUPABASE_SERVICE_ROLE_KEY (anon is read-only under RLS) and
-   404s outside `next dev`, so the key/ability and your RapidAPI quota can never ship to a
-   deployed site. To make it live, drop the NODE_ENV guard and add rate limiting/auth. */
+   Unlike the recrawl-shop route (which spawns Python+Playwright and so is dev-only), the work
+   here is pure JS — a RapidAPI fetch plus Supabase inserts — so it runs fine on serverless. It's
+   gated to dev OR a valid admin token (see lib/admin.ts): normal visitors get a stealth 404, so
+   the RapidAPI quota and service-role writes stay off-limits to the public. The inline embed
+   no-ops on Vercel (no venv) — the scheduled worker embeds the queued rows out-of-band. Requires
+   SUPABASE_SERVICE_ROLE_KEY (anon is read-only under RLS). */
 
 export async function POST(req: Request) {
-  if (process.env.NODE_ENV !== "development") {
+  const isDev = process.env.NODE_ENV === "development";
+  const adminToken = process.env.ADMIN_TOKEN;
+  const provided = req.headers.get("x-admin-token");
+  const authed = isDev || (!!adminToken && provided === adminToken);
+  if (!authed) {
+    // Stealth 404 — don't reveal the endpoint exists to anyone without the token.
     return NextResponse.json({ error: "Not available" }, { status: 404 });
   }
 
@@ -117,8 +126,9 @@ export async function POST(req: Request) {
     .eq("id", id);
   if (stampErr) console.warn(`fetch-images: ig_scraped_at stamp failed: ${stampErr.message}`);
 
-  // Auto-embed the freshly queued candidates so they appear without a manual `make embed`.
-  let embed = { ok: true, detail: "" };
+  // Auto-embed the freshly queued candidates so they appear without a manual `make embed`. On
+  // serverless there's no venv, so this no-ops (ran=false) and the worker embeds them later.
+  let embed = { ran: false, ok: true, detail: "" };
   if (inserted > 0) embed = await embedArtist(id);
 
   // Count what's actually displayable now (post content-gate; some candidates get dropped).
@@ -131,6 +141,9 @@ export async function POST(req: Request) {
   let message: string;
   if (visible && visible > 0) {
     message = `Added ${visible} image${visible === 1 ? "" : "s"}.`;
+  } else if (inserted > 0 && !embed.ran) {
+    // Normal serverless path: candidates are queued; the scheduled embed worker turns them visible.
+    message = `Queued ${inserted} image${inserted === 1 ? "" : "s"} — they'll appear after the next embed run.`;
   } else if (inserted > 0 && !embed.ok) {
     message = `Queued ${inserted}, but auto-embed failed — run \`make embed\`. (${embed.detail.slice(-160)})`;
   } else if (inserted > 0) {
