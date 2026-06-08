@@ -1,0 +1,180 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e5]:
+      - navigation [ref=e6]:
+        - list [ref=e7]:
+          - listitem [ref=e8]:
+            - link "Home" [ref=e9] [cursor=pointer]:
+              - /url: https://7daygallerytattoo.com/
+          - listitem [ref=e10]:
+            - link "About Us" [ref=e11] [cursor=pointer]:
+              - /url: /#aboutus
+          - listitem [ref=e12]:
+            - link "7 Day Gallery Tattoo" [ref=e14] [cursor=pointer]:
+              - /url: https://7daygallerytattoo.com/
+              - img "7 Day Gallery Tattoo" [ref=e15]
+          - listitem [ref=e16]:
+            - link "Info 3" [ref=e17] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e18]:
+            - link "Artists 3" [ref=e19] [cursor=pointer]:
+              - /url: https://7daygallerytattoo.com/#artists
+      - text: a
+  - generic [ref=e20]:
+    - article [ref=e22]:
+      - generic [ref=e25]:
+        - generic [ref=e33]:
+          - heading "7 Day Gallery" [level=2] [ref=e34]
+          - paragraph [ref=e36]: Tattoo
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e41]:
+              - heading "7 DAY GALLERY TATTOO & ART GALLERY" [level=2] [ref=e42]
+              - heading "PROVIDING THE CHICAGOLAND AREA WITH THE BEST TATTOO EXPERIENCE" [level=3] [ref=e43]
+              - paragraph [ref=e44]: Seven Day Gallery Tattoo strives to provide the finest tattoo experience possible in a friendly relaxed atmosphere. It is our priority to provide a clean, efficient, and a professional environment. Our artists are capable of various styles and are constantly improving their skills and techniques. At 7 Day Gallery our artists take on each tattoo with honesty and pride. Whether the tattoo is small, large, color or black and grey each tattoo is executed with precision and extreme detail.
+            - iframe [ref=e47]:
+              - generic [ref=f1e3]:
+                - generic:
+                  - button "Keyboard shortcuts"
+                - region "Map" [ref=f1e4]:
+                  - generic [ref=f1e5]:
+                    - region "Street View" [ref=f1e8] [cursor=pointer]
+                    - generic:
+                      - img:
+                        - button "Go East" [ref=f1e12] [cursor=pointer]
+                        - button "Go West" [ref=f1e15] [cursor=pointer]
+                - iframe [ref=f1e17]:
+                  
+                - generic [ref=f1e19]:
+                  - link "7 Day Gallery Tattoo & Art Gallery" [ref=f1e22] [cursor=pointer]:
+                    - /url: //maps.google.com/maps/contrib/101412496151200305433
+                    - generic [ref=f1e23]: 7 Day Gallery Tattoo & Art Gallery
+                  - link "View on Google Maps" [ref=f1e25] [cursor=pointer]:
+                    - /url: https://www.google.com/maps/@41.6030937,-87.7653326,0a,75.1y,269h,90t/data=!3m4!1e1!3m2!1sAF1QipP0Gxs4N7wG_pC3RZBom753tbq4NBZOnCMi0CB2!2e10?source=apiv3
+                  - link "Show location on map" [ref=f1e28] [cursor=pointer]:
+                    - /url: https://www.google.com/maps/@41.60309373726873,-87.76533262410449,13z?hl=en-US&gl=US
+                - button "Toggle fullscreen view" [ref=f1e30] [cursor=pointer]
+                - generic:
+                  - generic:
+                    - generic [ref=f1e32]:
+                      - button "Rotate counterclockwise" [ref=f1e33] [cursor=pointer]
+                      - button "Reset the view" [ref=f1e34] [cursor=pointer]
+                      - button "Rotate clockwise" [ref=f1e35] [cursor=pointer]
+                      - generic [ref=f1e36]: Rotate the view
+                    - generic [ref=f1e40] [cursor=pointer]:
+                      - button "Zoom in" [ref=f1e41]
+                      - button "Zoom out" [ref=f1e43]
+                - img "Google" [ref=f1e45]
+                - generic [ref=f1e46]:
+                  - button "Keyboard shortcuts" [ref=f1e52] [cursor=pointer]
+                  - generic [ref=f1e57]: © 360 Photo Inc. sm
+                  - link "Terms (opens in new tab)" [ref=f1e62] [cursor=pointer]:
+                    - /url: https://www.google.com/intl/en-US_US/help/terms_maps.html
+                    - text: Terms
+                  - link "Report a problem" [ref=f1e67] [cursor=pointer]:
+                    - /url: https://www.google.com/local/imagery/report/?cb_client=apiv3&image_key=!1e10!2sAF1QipP0Gxs4N7wG_pC3RZBom753tbq4NBZOnCMi0CB2&cbp=1,269,,0,0&hl=en-US
+          - generic [ref=e48]:
+            - generic [ref=e50]:
+              - heading "Contact" [level=3] [ref=e51]
+              - paragraph [ref=e52]:
+                - text: "Phone: 1-708-897-9855"
+                - text: Email
+                - link "7daygallerytattoo@gmail.com" [ref=e53] [cursor=pointer]:
+                  - /url: mailto:7daygallerytattoo@gmail.com
+              - heading "Appointments" [level=3] [ref=e54]
+              - paragraph [ref=e55]: Come into the shop or Call Us
+              - heading "Hours" [level=3] [ref=e56]
+              - paragraph [ref=e57]:
+                - text: Sundays - Appointment Only
+                - text: Mon & Wed - Sat 2P - 10P
+                - text: Tuesdays - Closed
+            - generic [ref=e59]:
+              - heading "Address" [level=3] [ref=e60]
+              - paragraph [ref=e61]:
+                - text: 6000 W. 159th Street
+                - text: Oak Forest, IL 60452
+        - generic [ref=e65]:
+          - paragraph [ref=e70]: Our Team
+          - generic [ref=e71]:
+            - generic [ref=e72]:
+              - link [ref=e74] [cursor=pointer]:
+                - /url: https://7daygallerytattoo.com/matthew-mueller/
+              - generic [ref=e77]:
+                - heading "Matthew Mueller" [level=2] [ref=e78]
+                - paragraph [ref=e79]: Tattoo Artist, Owner
+              - link [ref=e81] [cursor=pointer]:
+                - /url: https://7daygallerytattoo.com/derrick-bourg/
+              - generic [ref=e84]:
+                - heading "Derrick Bourg" [level=2] [ref=e85]
+                - paragraph [ref=e86]: Professional Body Piercer
+              - link "James Schall Piercer 7 Day Gallery Tattoo Shop Oak Forest Illinois" [ref=e88] [cursor=pointer]:
+                - /url: https://7daygallerytattoo.com/james-schall-piercer-7-day-gallery-tattoo-shop/
+                - img "James Schall Piercer 7 Day Gallery Tattoo Shop Oak Forest Illinois" [ref=e90]
+              - generic [ref=e92] [cursor=pointer]:
+                - heading "James Schall" [level=2] [ref=e93]
+                - paragraph [ref=e94]: Professional Body Piercer
+            - generic [ref=e95]:
+              - link [ref=e97] [cursor=pointer]:
+                - /url: https://7daygallerytattoo.com/steven-stanczyk/
+              - generic [ref=e100]:
+                - heading "Steven Stanczyk" [level=2] [ref=e101]
+                - paragraph [ref=e102]: Tattoo Artist
+              - link "Bob Gray Tattoo Artist 7 Day Gallery Tattoo" [ref=e104] [cursor=pointer]:
+                - /url: https://7daygallerytattoo.com/bob-gray/
+                - img "Bob Gray Tattoo Artist 7 Day Gallery Tattoo" [ref=e106]
+              - generic [ref=e108]:
+                - heading "Bob Gray" [level=2] [ref=e109]
+                - paragraph [ref=e110]: Tattoo Artist
+              - link "Leo Knezz Tattoo Artist 7 Day Gallery Tattoo Shop Oak Forest Illinois_300X200" [ref=e112] [cursor=pointer]:
+                - /url: https://7daygallerytattoo.com/leo-knezz-tattoo-artist-7-day-gallery-tattoo/
+                - img "Leo Knezz Tattoo Artist 7 Day Gallery Tattoo Shop Oak Forest Illinois_300X200" [ref=e114]
+              - generic [ref=e116] [cursor=pointer]:
+                - heading "Leo Knezz" [level=2] [ref=e117]
+                - paragraph [ref=e118]: Tattoo Artist
+        - generic [ref=e119]:
+          - generic [ref=e123]:
+            - heading "Got a Question?" [level=1] [ref=e124]
+            - paragraph [ref=e125]: For questions, consultations, or appointments stop in or call the shop at 1-708-897-9855
+          - generic [ref=e126]:
+            - generic [ref=e129]:
+              - heading "7 Day Gallery Hours" [level=3] [ref=e130]
+              - list [ref=e131]:
+                - listitem [ref=e132]: Wednesday - 2:00 pm to 10:00 pm
+                - listitem [ref=e133]: Thursday - 2:00 pm to 10:00 pm
+                - listitem [ref=e134]: Friday - 2:00 pm to 10:00 pm
+                - listitem [ref=e135]: Saturday - 2:00 pm to 10:00 pm
+                - listitem [ref=e136]: Sunday - Appointment Only
+                - listitem [ref=e137]: Monday - 2:00 pm to 10:00 pm
+                - listitem [ref=e138]: Tuesday - CLOSED
+              - heading "7 Day Gallery Address" [level=3] [ref=e139]
+              - paragraph [ref=e140]: 6000 W. 159th Street Oak Forest, IL 60452
+            - generic [ref=e142]:
+              - heading "7 Day Gallery Social" [level=3] [ref=e145]
+              - list [ref=e146]:
+                - listitem [ref=e147]:
+                  - link "" [ref=e148] [cursor=pointer]:
+                    - /url: http://www.facebook.com/7daygallery
+                - listitem [ref=e149]:
+                  - link "" [ref=e150] [cursor=pointer]:
+                    - /url: http://www.instagram.com/7dgtattoo
+                - listitem [ref=e151]:
+                  - link "" [ref=e152] [cursor=pointer]:
+                    - /url: https://www.etsy.com/shop/aceink112784
+                - listitem [ref=e153]:
+                  - link "" [ref=e154] [cursor=pointer]:
+                    - /url: https://ebay.us/m/FIHq4j
+    - text: "2"
+    - contentinfo [ref=e155]:
+      - list [ref=e158]:
+        - listitem [ref=e159]:
+          - link "Privacy Policy" [ref=e160] [cursor=pointer]:
+            - /url: https://7daygallerytattoo.com/privacy-policy/
+        - listitem [ref=e161]:
+          - link "Terms & Conditions" [ref=e162] [cursor=pointer]:
+            - /url: https://7daygallerytattoo.com/terms-conditions/
+      - generic [ref=e164]:
+        - list
+        - paragraph [ref=e165]:
+          - text: Copyright © 2014-2026 7 Day Gallery Tattoo | Site by
+          - link "Voodoo Consulting Group, Inc." [ref=e166] [cursor=pointer]:
+            - /url: http://www.voodoocg.com

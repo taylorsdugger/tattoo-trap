@@ -7,7 +7,7 @@ Next.js 15 (App Router, TypeScript, Tailwind v4) frontend for Tattoo Trap. Deplo
 ```bash
 cp .env.example .env.local     # set NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm install
-npm run dev                    # http://localhost:3000
+npm run dev                    # http://localhost:3002
 ```
 
 ## How search works
@@ -22,16 +22,16 @@ No server compute is used for embeddings; the only network calls are read-only S
 
 ## Layout
 
-| Path | Purpose |
-|---|---|
-| `src/app/page.tsx` | home — metro picker + dropzone + results |
-| `src/app/artist/[slug]/page.tsx` | artist detail + portfolio grid |
-| `src/app/metro/[slug]/page.tsx` | browse shops/artists in a metro |
-| `src/lib/embedder.ts` | in-browser CLIP embedding |
-| `src/lib/search.ts` | similarity-search RPC call |
-| `src/lib/supabase.ts` | anon Supabase client |
-| `src/lib/images.ts` | Storage public-URL helpers |
-| `src/components/*` | UI (SearchExperience, MetroPicker, ImageDropzone, ArtistCard, …) |
+| Path                             | Purpose                                                          |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `src/app/page.tsx`               | home — metro picker + dropzone + results                         |
+| `src/app/artist/[slug]/page.tsx` | artist detail + portfolio grid                                   |
+| `src/app/metro/[slug]/page.tsx`  | browse shops/artists in a metro                                  |
+| `src/lib/embedder.ts`            | in-browser CLIP embedding                                        |
+| `src/lib/search.ts`              | similarity-search RPC call                                       |
+| `src/lib/supabase.ts`            | anon Supabase client                                             |
+| `src/lib/images.ts`              | Storage public-URL helpers                                       |
+| `src/components/*`               | UI (SearchExperience, MetroPicker, ImageDropzone, ArtistCard, …) |
 
 ## Deploy to Vercel
 

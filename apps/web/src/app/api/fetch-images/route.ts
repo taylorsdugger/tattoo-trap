@@ -2,8 +2,9 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getCurrentRole, hasMinRole } from "@/lib/auth";
 import { fetchInstagramImageUrls, normalizeHandle } from "@/lib/instagram";
+import { createServiceClient } from "@/lib/supabase/serviceClient";
 
 /* Run the Python embed step for one artist so the queued candidates turn into displayable
    thumbnails immediately — same work as `make embed`, scoped to this artist via --artist.
@@ -46,26 +47,21 @@ function embedArtist(artistId: number): Promise<{ ran: boolean; ok: boolean; det
    `embed_images.py` stage downloads, content-gates, thumbnails and embeds them, exactly as it
    does for Apify/crawler rows. Nothing displays until that embed run completes.
 
-   Unlike the recrawl-shop route (which spawns Python+Playwright and so is dev-only), the work
+   Unlike the recrawl-shop route (which spawns Python+Playwright and so is local-only), the work
    here is pure JS — a RapidAPI fetch plus Supabase inserts — so it runs fine on serverless. It's
-   gated to dev OR a valid admin token (see lib/admin.ts): normal visitors get a stealth 404, so
-   the RapidAPI quota and service-role writes stay off-limits to the public. The inline embed
+   authorized by role (admin or owner) via the signed-in user's session: normal visitors get a 403,
+   so the RapidAPI quota and service-role writes stay off-limits to the public. The inline embed
    no-ops on Vercel (no venv) — the scheduled worker embeds the queued rows out-of-band. Requires
    SUPABASE_SERVICE_ROLE_KEY (anon is read-only under RLS). */
 
 export async function POST(req: Request) {
-  const isDev = process.env.NODE_ENV === "development";
-  const adminToken = process.env.ADMIN_TOKEN;
-  const provided = req.headers.get("x-admin-token");
-  const authed = isDev || (!!adminToken && provided === adminToken);
-  if (!authed) {
-    // Stealth 404 — don't reveal the endpoint exists to anyone without the token.
-    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  const role = await getCurrentRole();
+  if (!hasMinRole(role, "admin")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
+  const admin = createServiceClient();
+  if (!admin) {
     return NextResponse.json(
       { error: "Set SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local to enable fetching." },
       { status: 500 },
@@ -76,8 +72,6 @@ export async function POST(req: Request) {
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "Body must be { id: number }" }, { status: 400 });
   }
-
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
   const { data: artist, error: artErr } = await admin
     .from("artists")

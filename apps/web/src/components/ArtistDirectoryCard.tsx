@@ -63,12 +63,12 @@ export default function ArtistDirectoryCard({
                 @{instagram} ↗
               </a>
             )}
-            <FavoriteButton slug={artist.slug} name={artist.name} />
-            {/* Dev-only: backfill images for an artist that has none yet (self-gates in prod). */}
+            <FavoriteButton artistId={artist.id} name={artist.name} />
+            {/* Admin-only: backfill images for an artist that has none yet (self-gates otherwise). */}
             {images.length === 0 && artist.instagram_handle && (
               <FetchImagesButton artistId={artist.id} variant="icon" />
             )}
-            {/* Dev-only: re-crawl this artist's shop website (picks up new artists + images). */}
+            {/* Admin-only: re-crawl this artist's shop website (picks up new artists + images). */}
             <RecrawlShopButton artistId={artist.id} />
             <TrashArtistButton id={artist.id} name={artist.name} />
           </span>

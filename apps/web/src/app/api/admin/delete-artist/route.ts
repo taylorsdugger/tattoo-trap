@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getCurrentRole, hasMinRole } from "@/lib/auth";
+import { createServiceClient } from "@/lib/supabase/serviceClient";
 
-/* Dev-only curation endpoint: trash a junk "artist" the crawler ingested (nav buttons,
-   permit pages, etc.) straight from the UI. Mirrors prune_junk_artists.py --apply:
-   delete image rows, then the artist row, then the storage thumbnails (best-effort).
+/* Admin curation endpoint: trash a junk "artist" the crawler ingested (nav buttons, permit pages,
+   etc.) straight from the UI. Mirrors prune_junk_artists.py --apply: delete image rows, then the
+   artist row, then the storage thumbnails (best-effort).
 
-   Requires SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local — server-side only, and the
-   route 404s outside `next dev`, so the key/ability can never ship to a deployed site. */
+   Authorized by role (admin or owner) via the signed-in user's session; the actual delete runs
+   with the service-role key (display tables have no anon write policy). Requires
+   SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local — server-side only. */
 
 const STORAGE_BUCKET = "portfolios"; // matches pipeline config.STORAGE_BUCKET
 
 export async function POST(req: Request) {
-  if (process.env.NODE_ENV !== "development") {
-    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  const role = await getCurrentRole();
+  if (!hasMinRole(role, "admin")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
+  const admin = createServiceClient();
+  if (!admin) {
     return NextResponse.json(
       { error: "Set SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local to enable deletion." },
       { status: 500 },
@@ -28,8 +30,6 @@ export async function POST(req: Request) {
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "Body must be { id: number }" }, { status: 400 });
   }
-
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
   const { data: images, error: imgErr } = await admin
     .from("portfolio_images")

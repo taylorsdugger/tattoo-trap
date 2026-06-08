@@ -22,7 +22,25 @@ from playwright.sync_api import sync_playwright
 from . import config, db
 from .image_sources import normalize_handle
 
+# A current, ordinary desktop Chrome UA. The bulk crawl uses the honest TattooTrapBot UA from
+# config.USER_AGENT; this is opted into for single-shop retries (the blocked-shop fallback and the
+# web app's manual "re-crawl shop" button) where a site behind Cloudflare serves the polite bot an
+# "Attention Required!" challenge instead of the real homepage.
+REAL_CHROME_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
 ARTIST_HINTS = ("artist", "artists", "team", "staff", "our-artists", "our-team", "roster", "crew")
+
+# Path-segment markers for a dedicated "here is my work" page. Solo artists and single-location
+# shops (the house-artist case) keep their portfolio on one of these pages, not the homepage —
+# the homepage is branding (logo, social icons, a headshot). The fallback follows these to seed
+# the house artist with real work instead of leaving it empty. Substrings of "portfolio"/"gallery"
+# are also matched at the call site so "/tattoo-portfolio" and "/tattoo-gallery" qualify.
+PORTFOLIO_HINTS = {
+    "portfolio", "gallery", "galleries", "tattoos", "work", "works", "our-work", "flash", "designs",
+}
 
 # Whole path segments that mark a page as editorial/navigational — never an individual
 # artist. Matched against entire segments (not substrings) so "/post/..." and "/services/..."
@@ -79,8 +97,15 @@ INITIAL_RE = re.compile(r"^[A-Z]\.?$")
 SKIP_IMG = (
     "logo", "icon", "sprite", "favicon", "avatar", "placeholder",
     # non-art site chrome / headshots that pollute the visual index
-    "banner", "profile", "header", "exterior", "interior", "storefront",
+    "banner", "profile", "header", "footer", "exterior", "interior", "storefront",
     "flash-wall", "-sign", "signage",  # "-sign" not "sign" so it won't match "designs"
+    # "powered by" platform footer badges (Wix/Squarespace/GoDaddy/Weebly) leak in as <img>.
+    # Hyphen/underscore-bound so it never trips on "empowered".
+    "powered-by", "powered_by", "poweredby",
+    # brand assets and staff headshots — chrome/people, not portfolios. These tokens are
+    # deliberately specific: bare "brand" matched an artist's name ("Brandon"), bare "team"
+    # matched GoDaddy's "isteam/" CDN path and "steam-punk", so neither survived testing.
+    "branding", "headshot", "head-shot", "staff-", "staff_",
     "pixel.wp.com",  # WordPress stats tracking gif
     "googleusercontent.com/sitesv/",  # Google Sites images 403 anything but a browser session
 )
@@ -282,7 +307,12 @@ def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     text = text.decode("utf-8", "ignore") if isinstance(text, bytes) else str(text or "")
     if not href:
         return False
-    if urlparse(href).netloc and urlparse(href).netloc != base_host:
+    # Same-host check, ignoring a leading "www." on either side. Shops are often seeded with the
+    # "www." website while the site's own links resolve to the bare apex host (or vice versa);
+    # an exact netloc compare then rejects every internal artist link as "external" and the crawl
+    # silently falls back to the empty house-artist.
+    href_host = urlparse(href).netloc.lower().removeprefix("www.")
+    if href_host and href_host != base_host.lower().removeprefix("www."):
         return False
     path = urlparse(href).path.lower().strip("/")
     if not path:
@@ -296,6 +326,29 @@ def _looks_like_artist_link(href: str, text: str, base_host: str) -> bool:
     # in a parent segment stops blog slugs that merely end in "...-artist" from matching.
     hint_dir = any(h in seg for seg in segs[:-1] for h in ARTIST_HINTS)
     return _is_person_name(text.strip()) or hint_dir or _is_mononym_slug(text, segs)
+
+
+def _portfolio_page_links(anchors: list[dict], website: str, base_host: str) -> list[str]:
+    """Internal links that point at a dedicated portfolio/gallery page (see PORTFOLIO_HINTS), in
+    document order, de-duped. Same-host check ignores a leading "www." on either side, matching
+    `_looks_like_artist_link`."""
+    base = base_host.lower().removeprefix("www.")
+    out, seen = [], set()
+    for a in anchors:
+        href = str(a.get("href") or "")
+        if not href:
+            continue
+        host = urlparse(href).netloc.lower().removeprefix("www.")
+        if host and host != base:
+            continue
+        segs = [s for s in urlparse(href).path.lower().strip("/").split("/") if s]
+        if not any(s in PORTFOLIO_HINTS or "portfolio" in s or "gallery" in s for s in segs):
+            continue
+        absu = _abs(website, href)
+        if absu not in seen:
+            seen.add(absu)
+            out.append(absu)
+    return out
 
 
 def _artist_name(text: str, href: str) -> str:
@@ -353,6 +406,9 @@ def crawl_shop(page, shop: dict) -> int:
         ig = _instagram_handle(home["anchors"])
         if ig:
             db.client().table("shops").update({"instagram_handle": ig}).eq("id", shop["id"]).execute()
+            # Reflect the write locally so the house-artist fallback below inherits the freshly
+            # discovered handle instead of the stale None from the pre-crawl snapshot.
+            shop["instagram_handle"] = ig
 
     # Candidate individual-artist links from the homepage + obvious listing pages.
     artist_links: dict[str, str] = {}  # href -> name
@@ -414,7 +470,26 @@ def crawl_shop(page, shop: dict) -> int:
                 instagram_handle=shop.get("instagram_handle"),
                 profile_url=website,
             )
-            imgs = _clean_image_urls(website, home["imgs"])[: config.MAX_IMAGES_PER_ARTIST]
+            imgs = _clean_image_urls(website, home["imgs"])
+            # The homepage is usually branding (logo, social icons, a headshot), which
+            # `_clean_image_urls` strips — leaving the house artist empty. Follow a couple of
+            # dedicated portfolio/gallery pages (e.g. /tattoo-portfolio) and harvest their work.
+            if len(imgs) < config.MAX_IMAGES_PER_ARTIST:
+                for purl in _portfolio_page_links(home["anchors"], website, base_host)[:2]:
+                    if pages_visited >= config.CRAWL_MAX_PAGES_PER_SHOP:
+                        break
+                    if not _can_fetch(purl):
+                        continue
+                    try:
+                        time.sleep(config.POLITE_DELAY_S)
+                        page.goto(
+                            purl, timeout=config.REQUEST_TIMEOUT_S * 1000, wait_until="domcontentloaded"
+                        )
+                        pages_visited += 1
+                    except Exception:  # noqa: BLE001 — a bad portfolio page just yields no images
+                        continue
+                    imgs += _clean_image_urls(purl, _settle_and_collect(page)["imgs"])
+            imgs = list(dict.fromkeys(imgs))[: config.MAX_IMAGES_PER_ARTIST]
             for u in imgs:
                 db.add_candidate_image(artist["id"], u)
                 stored += 1
@@ -422,11 +497,15 @@ def crawl_shop(page, shop: dict) -> int:
     return stored
 
 
-def _crawl_shops(shops: list[dict]) -> None:
-    """Open one headless browser and crawl each shop through it."""
+def _crawl_shops(shops: list[dict], *, user_agent: str | None = None) -> None:
+    """Open one headless browser and crawl each shop through it.
+
+    `user_agent` overrides the default polite bot UA — used by the blocked-shop fallback
+    (recrawl_blocked.py), which retries shops behind Cloudflare with a real-browser UA.
+    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent=config.USER_AGENT)
+        context = browser.new_context(user_agent=user_agent or config.USER_AGENT)
         page = context.new_page()
         for shop in shops:
             print(f"- {shop['name']} ({shop.get('website') or 'no website'})")
@@ -453,14 +532,19 @@ def crawl_metro(metro_slug: str, *, new_only: bool = False) -> None:
     _crawl_shops(shops)
 
 
-def crawl_one_shop(shop_id: int) -> None:
+def crawl_one_shop(shop_id: int, *, real_ua: bool = False) -> None:
     """Re-crawl a single shop by id — used by the web app's 're-crawl shop' button to re-ingest
-    one site after a crawler change, without re-running a whole metro."""
+    one site after a crawler change, without re-running a whole metro.
+
+    `real_ua` retries with a real desktop Chrome UA instead of the polite bot UA, which clears the
+    Cloudflare challenge that otherwise leaves bot-managed shops empty. The manual button opts into
+    this since an admin re-crawling one shop is usually chasing a site the polite crawl couldn't read.
+    """
     shop = db.get_shop(shop_id)
     if not shop:
         raise SystemExit(f"Shop {shop_id} not found.")
-    print(f"Crawling 1 shop (id {shop_id})...")
-    _crawl_shops([shop])
+    print(f"Crawling 1 shop (id {shop_id}){' with a real Chrome UA' if real_ua else ''}...")
+    _crawl_shops([shop], user_agent=REAL_CHROME_UA if real_ua else None)
 
 
 def main() -> None:
@@ -472,9 +556,15 @@ def main() -> None:
         action="store_true",
         help="only crawl shops with no artists yet (incremental run after a broader seed)",
     )
+    parser.add_argument(
+        "--real-ua",
+        action="store_true",
+        help="crawl with a real desktop Chrome UA instead of the polite bot UA (clears Cloudflare "
+        "challenges); intended for single --shop retries",
+    )
     args = parser.parse_args()
     if args.shop:
-        crawl_one_shop(args.shop)
+        crawl_one_shop(args.shop, real_ua=args.real_ua)
     elif args.metro:
         crawl_metro(args.metro, new_only=args.new_only)
     else:

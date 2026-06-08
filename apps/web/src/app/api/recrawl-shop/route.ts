@@ -2,16 +2,17 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getCurrentRole, hasMinRole } from "@/lib/auth";
+import { createServiceClient } from "@/lib/supabase/serviceClient";
 
-/* Dev-only curation endpoint: re-run the Python crawler against one artist's SHOP website, then
-   embed whatever new candidates it discovers. Triggered by the cards' "re-crawl shop" button so a
-   site can be re-ingested after a crawler change (JS-gallery settle, relaxed name heuristics)
-   straight from the UI — no Apify/RapidAPI involved.
+/* Admin curation endpoint: re-run the Python crawler against one artist's SHOP website, then embed
+   whatever new candidates it discovers. Triggered by the cards' "re-crawl shop" button so a site
+   can be re-ingested after a crawler change (JS-gallery settle, relaxed name heuristics) straight
+   from the UI — no Apify/RapidAPI involved.
 
-   Requires SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local and 404s outside `next dev`, so the
-   key/ability can never ship to a deployed site. The pipeline lives on the same machine as
-   `next dev` at <repo>/pipeline. */
+   Authorized by role (admin or owner). NOTE: this spawns Python + Playwright from <repo>/pipeline,
+   so it only actually works where that venv exists (local dev) — on serverless the spawn fails
+   gracefully with a clear message. Requires SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local. */
 
 // next dev runs with cwd = apps/web; the pipeline is at <repo>/pipeline.
 const PIPELINE_DIR = path.resolve(process.cwd(), "..", "..", "pipeline");
@@ -41,13 +42,13 @@ function runPython(args: string[], timeoutMs: number): Promise<{ ok: boolean; de
 }
 
 export async function POST(req: Request) {
-  if (process.env.NODE_ENV !== "development") {
-    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  const role = await getCurrentRole();
+  if (!hasMinRole(role, "admin")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
+  const admin = createServiceClient();
+  if (!admin) {
     return NextResponse.json(
       { error: "Set SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local to enable re-crawling." },
       { status: 500 },
@@ -58,8 +59,6 @@ export async function POST(req: Request) {
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "Body must be { id: number }" }, { status: 400 });
   }
-
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
   // Resolve the artist's shop — the crawler works per shop website.
   const { data: artist, error: artErr } = await admin
@@ -75,7 +74,12 @@ export async function POST(req: Request) {
 
   // Crawl (Playwright launch + up to a dozen pages with settle waits), then embed the shop's new
   // candidates. Generous timeouts: the crawl is the slow leg.
-  const crawl = await runPython(["-m", "tattoo_trap.crawl_shops", "--shop", String(shopId)], 240_000);
+  // --real-ua: a manual single-shop re-crawl uses a real Chrome UA so Cloudflare-challenged sites
+  // (which serve the polite TattooTrapBot UA an "Attention Required!" page) load their real roster.
+  const crawl = await runPython(
+    ["-m", "tattoo_trap.crawl_shops", "--shop", String(shopId), "--real-ua"],
+    240_000,
+  );
   if (!crawl.ok) {
     return NextResponse.json(
       { error: `Crawl failed. ${crawl.detail.slice(-200)}` },

@@ -16,12 +16,16 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
   const [trashed, setTrashed] = useState(false);
   const pct = Math.round(match.similarity * 100);
   const images = (match.images ?? []).filter((img) => img.storage_path).slice(0, 4);
+  const href = `/artist/${match.artist_slug}`;
 
   if (trashed) return null;
 
   return (
     <article
-      onClick={() => router.push(`/artist/${match.artist_slug}`)}
+      // Warm the destination on hover so the click navigates instantly (Link does this for us
+      // elsewhere, but this row pushes programmatically to avoid nesting the action buttons in <a>).
+      onMouseEnter={() => router.prefetch(href)}
+      onClick={() => router.push(href)}
       className="tt-row grid cursor-pointer gap-[18px] border-t border-line py-[30px] first:border-t-0"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:gap-5">
@@ -47,12 +51,12 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
               {pct}
               <span className="text-ink-faint">%</span>
             </span>
-            <FavoriteButton slug={match.artist_slug} name={match.artist_name} />
-            {/* Dev-only: backfill images for an artist that has none yet (self-gates in prod). */}
+            <FavoriteButton artistId={match.artist_id} name={match.artist_name} />
+            {/* Admin-only: backfill images for an artist that has none yet (self-gates otherwise). */}
             {images.length === 0 && match.artist_instagram && (
               <FetchImagesButton artistId={match.artist_id} variant="icon" />
             )}
-            {/* Dev-only: re-crawl this artist's shop website (picks up new artists + images). */}
+            {/* Admin-only: re-crawl this artist's shop website (picks up new artists + images). */}
             <RecrawlShopButton artistId={match.artist_id} />
             <TrashArtistButton
               id={match.artist_id}

@@ -47,7 +47,7 @@ pipeline-install: ## Install Python pipeline (uv if present, else venv) + Playwr
 
 # --- web -------------------------------------------------------------------------------
 
-dev: ## Run the web app in dev mode (http://localhost:3000)
+dev: ## Run the web app in dev mode (http://localhost:3002)
 	cd $(WEB_DIR) && npm run dev
 
 web-build: ## Production build of the web app

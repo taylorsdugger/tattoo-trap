@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useIsAdmin } from "@/components/AuthProvider";
+import { toast } from "@/lib/toast";
 
-/* Dev-only curation control: re-run the Python crawler against this artist's SHOP website, then
+/* Admin-only curation control: re-run the Python crawler against this artist's SHOP website, then
    embed whatever new candidates it finds. Use it to re-ingest a shop after a crawler change (the
    JS-gallery settle + relaxed name heuristics) without touching Apify/RapidAPI.
 
-   Compact 9×9 glyph for the list cards' action row. Self-gates to dev — renders nothing in
-   production, and the /api/recrawl-shop route 404s there anyway. */
+   Compact 9×9 glyph for the list cards' action row. Gated to admins — renders nothing otherwise.
+   First click arms (no blocking confirm dialog); a second click within a few seconds runs it.
+   NOTE: the route spawns local Python+Playwright, so it only works in local dev (serverless has
+   no pipeline venv); the button still shows for admins on live but the call fails gracefully. */
 export default function RecrawlShopButton({
   artistId,
   className = "",
@@ -17,16 +21,34 @@ export default function RecrawlShopButton({
   className?: string;
 }) {
   const router = useRouter();
+  const isAdmin = useIsAdmin();
   const [busy, setBusy] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (process.env.NODE_ENV !== "development") return null;
+  if (!isAdmin) return null;
+
+  const disarm = () => {
+    if (disarmTimer.current) clearTimeout(disarmTimer.current);
+    disarmTimer.current = null;
+    setArmed(false);
+  };
 
   const onClick = async (e: React.MouseEvent) => {
     // Cards navigate on click — keep the crawl from triggering that.
     e.stopPropagation();
     e.preventDefault();
     if (busy) return;
-    if (!window.confirm("Re-crawl this shop's website? May add new artists and images.")) return;
+
+    // First click arms; the next click within the window actually re-crawls.
+    if (!armed) {
+      setArmed(true);
+      toast("Click again to re-crawl this shop — may add new artists and images.", "info", 3500);
+      disarmTimer.current = setTimeout(() => setArmed(false), 3500);
+      return;
+    }
+    disarm();
+
     setBusy(true);
     try {
       const res = await fetch("/api/recrawl-shop", {
@@ -35,8 +57,12 @@ export default function RecrawlShopButton({
         body: JSON.stringify({ id: artistId }),
       });
       const data = await res.json().catch(() => ({}));
-      window.alert(res.ok ? (data.message ?? "Done.") : `Re-crawl failed: ${data.error ?? res.status}`);
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast(data.message ?? "Done.", "success");
+        router.refresh();
+      } else {
+        toast(`Re-crawl failed: ${data.error ?? res.status}`, "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -46,12 +72,17 @@ export default function RecrawlShopButton({
     <button
       type="button"
       onClick={onClick}
+      onMouseLeave={() => !busy && disarm()}
       disabled={busy}
       aria-label="Re-crawl this artist's shop website"
-      title="Re-crawl shop website"
-      className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-[1px] border border-line font-mono text-[15px] leading-none text-ink-faint transition-colors hover:border-ink hover:text-ink disabled:opacity-40 ${className}`}
+      title={armed ? "Click again to confirm re-crawl" : "Re-crawl shop website"}
+      className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-[1px] border font-mono text-[15px] leading-none transition-[color,border-color,transform] duration-150 active:scale-90 disabled:opacity-40 disabled:active:scale-100 ${
+        armed
+          ? "border-ink text-ink"
+          : "border-line text-ink-faint hover:border-ink hover:text-ink"
+      } ${className}`}
     >
-      <span aria-hidden>{busy ? "…" : "⟲"}</span>
+      <span aria-hidden>{busy ? "…" : armed ? "?" : "⟲"}</span>
     </button>
   );
 }

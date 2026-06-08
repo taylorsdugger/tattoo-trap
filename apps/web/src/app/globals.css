@@ -33,6 +33,21 @@ body {
   background: color-mix(in oklab, var(--color-accent) 22%, transparent);
 }
 
+/* toast entrance — slide up + fade in */
+@keyframes tt-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tt-toast-in {
+  animation: tt-toast-in 0.18s ease-out;
+}
+
 /* result rows / cards dim slightly on hover */
 .tt-row {
   transition: opacity 0.16s ease;

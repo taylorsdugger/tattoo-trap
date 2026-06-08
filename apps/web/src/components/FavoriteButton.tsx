@@ -4,26 +4,27 @@ import { toggleFavorite, useIsFavorite } from "@/lib/favorites";
 import { btnGhost } from "./ui";
 
 /* Heart toggle for saving an artist. `icon` is the quiet card-corner variant;
-   `button` matches the outlined mono buttons (artist page header). */
+   `button` matches the outlined mono buttons (artist page header). Favorites are user-owned;
+   clicking while logged out prompts Google sign-in (handled in toggleFavorite). */
 export default function FavoriteButton({
-  slug,
+  artistId,
   name,
   variant = "icon",
   className = "",
 }: {
-  slug: string;
+  artistId: number;
   name: string;
   variant?: "icon" | "button";
   className?: string;
 }) {
-  const fav = useIsFavorite(slug);
+  const fav = useIsFavorite(artistId);
   const label = fav ? `Remove ${name} from favorites` : `Save ${name} to favorites`;
 
   const onClick = (e: React.MouseEvent) => {
     // Cards navigate on click — keep the toggle from triggering that.
     e.stopPropagation();
     e.preventDefault();
-    toggleFavorite(slug);
+    void toggleFavorite(artistId);
   };
 
   if (variant === "button") {
@@ -50,7 +51,7 @@ export default function FavoriteButton({
       aria-pressed={fav}
       aria-label={label}
       title={label}
-      className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-[1px] border text-[19px] leading-none transition-colors ${
+      className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-[1px] border text-[19px] leading-none transition-[color,border-color,transform] duration-150 active:scale-90 ${
         fav ? "border-ink text-ink" : "border-line text-ink-faint hover:border-ink hover:text-ink"
       } ${className}`}
     >

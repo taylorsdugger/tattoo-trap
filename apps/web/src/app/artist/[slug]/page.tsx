@@ -85,7 +85,7 @@ export default async function ArtistPage({
           )}
         </div>
         <div className="flex items-center gap-2.5">
-          <FavoriteButton slug={a.slug} name={a.name} variant="button" />
+          <FavoriteButton artistId={a.id} name={a.name} variant="button" />
           {a.instagram_handle && (
             <a
               href={`https://instagram.com/${a.instagram_handle}`}
@@ -149,8 +149,8 @@ export default async function ArtistPage({
       <Label>portfolio</Label>
       <div className="mt-4">
         <PortfolioGrid images={imgs} />
-        {/* Dev-only backfill: when an artist has no images and a handle to scrape, offer an
-            on-demand RapidAPI fetch (no Apify credits). FetchImagesButton self-gates in prod. */}
+        {/* Admin-only backfill: when an artist has no images and a handle to scrape, offer an
+            on-demand RapidAPI fetch (no Apify credits). FetchImagesButton self-gates for others. */}
         {imgs.length === 0 && a.instagram_handle && (
           <div className="mt-4">
             <FetchImagesButton artistId={a.id} />

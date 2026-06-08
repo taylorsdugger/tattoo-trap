@@ -26,29 +26,32 @@ in a Python pipeline. The web app does read-only similarity search.
 
 ## Repo layout (monorepo)
 
-| Path | What | Runs on |
-|---|---|---|
-| `apps/web` | Next.js 15 (App Router, TS, Tailwind) frontend | Vercel |
+| Path       | What                                                      | Runs on      |
+| ---------- | --------------------------------------------------------- | ------------ |
+| `apps/web` | Next.js 15 (App Router, TS, Tailwind) frontend            | Vercel       |
 | `pipeline` | Python: seed → crawl (Playwright) → embed (CLIP) → ingest | Local / cron |
-| `supabase` | SQL migrations: schema, pgvector, RPC, RLS, seed metros | Supabase |
+| `supabase` | SQL migrations: schema, pgvector, RPC, RLS, seed metros   | Supabase     |
 
 ## Quickstart
 
 ### 1. Supabase
+
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Apply the migrations in `supabase/migrations/` (Supabase SQL editor or `supabase db push`).
 3. Create a public Storage bucket named `portfolios`.
 4. Grab your project URL, `anon` key, and `service_role` key.
 
 ### 2. Web app
+
 ```bash
 cd apps/web
 cp .env.example .env.local   # fill NEXT_PUBLIC_SUPABASE_URL + ANON_KEY
 npm install
-npm run dev                  # http://localhost:3000
+npm run dev                  # http://localhost:3002
 ```
 
 ### 3. Pipeline
+
 ```bash
 cd pipeline
 cp .env.example .env         # fill SUPABASE_URL + SERVICE_ROLE_KEY
