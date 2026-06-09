@@ -3,12 +3,16 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIsAdmin } from "@/components/AuthProvider";
+import { useIsLocalhost } from "@/lib/useIsLocalhost";
 import { toast } from "@/lib/toast";
 
 /* Admin-only trash toggle for junk rows the crawler ingested ("ATHLETIC EVENT PERMITS" et al).
    First click arms (turns red, no blocking confirm dialog); a second click within a few seconds
    hits the admin delete route, which removes the artist, its image rows, and storage thumbnails.
-   Renders nothing for non-admins — the route 403s for them anyway. */
+
+   Localhost-only: the delete route needs the service-role key, which only lives in
+   apps/web/.env.local — so on the deployed site this renders nothing and HideArtistButton takes
+   over (hide now, delete locally later). Renders nothing for non-admins either. */
 export default function TrashArtistButton({
   id,
   name,
@@ -23,11 +27,12 @@ export default function TrashArtistButton({
 }) {
   const router = useRouter();
   const isAdmin = useIsAdmin();
+  const isLocalhost = useIsLocalhost();
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!isAdmin) return null;
+  if (!isAdmin || !isLocalhost) return null;
 
   const disarm = () => {
     if (disarmTimer.current) clearTimeout(disarmTimer.current);

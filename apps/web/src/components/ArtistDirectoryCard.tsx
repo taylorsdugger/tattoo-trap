@@ -3,6 +3,7 @@ import { displayImage } from "@/lib/images";
 import type { DirectoryArtist } from "@/lib/types";
 import FavoriteButton from "./FavoriteButton";
 import FetchImagesButton from "./FetchImagesButton";
+import HideArtistButton from "./HideArtistButton";
 import RecrawlShopButton from "./RecrawlShopButton";
 import TrashArtistButton from "./TrashArtistButton";
 
@@ -70,7 +71,10 @@ export default function ArtistDirectoryCard({
             )}
             {/* Admin-only: re-crawl this artist's shop website (picks up new artists + images). */}
             <RecrawlShopButton artistId={artist.id} />
+            {/* Delete (✕) is localhost-only; Hide (⊘) shows for admins everywhere. On localhost
+                both appear so the hide flow is testable; in production only Hide does. */}
             <TrashArtistButton id={artist.id} name={artist.name} />
+            <HideArtistButton id={artist.id} name={artist.name} />
           </span>
           {shop?.website && (
             <a

@@ -5,7 +5,7 @@ Schema, vector search, and RLS for Tattoo Trap.
 ## Apply migrations
 
 **Option A — Supabase SQL editor (simplest):** open each file in `migrations/` in order
-(`0001` → `0004`) and run it.
+(`0001` → `0008`) and run it.
 
 **Option B — Supabase CLI:**
 ```bash
@@ -26,6 +26,7 @@ The pipeline uploads downscaled thumbnails here; the web app reads them by publi
 | `0002_rpc.sql` | `search_artists_by_image(...)` cosine-similarity search RPC |
 | `0003_rls.sql` | public read RLS (writes via service role only) |
 | `0004_seed_metros.sql` | seed the 4 MVP metros |
+| `0008_hidden_artists.sql` | `hidden_artists` queue — hide junk on the live site, delete locally |
 
 ## Model dimension
 

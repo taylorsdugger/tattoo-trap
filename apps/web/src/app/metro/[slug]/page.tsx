@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Label } from "@/components/ui";
+import { getHiddenArtistIds } from "@/lib/search";
 import { supabase } from "@/lib/supabase";
 import type { Artist, Metro, Shop } from "@/lib/types";
 
@@ -25,12 +26,16 @@ export default async function MetroPage({
   const { data: shops } = await supabase.from("shops").select("*").eq("metro_id", m.id).order("name");
   const shopList = (shops ?? []) as Shop[];
 
-  const { data: artists } = await supabase
-    .from("artists")
-    .select("*")
-    .in("shop_id", shopList.length ? shopList.map((s) => s.id) : [-1])
-    .order("name");
-  const artistList = (artists ?? []) as Artist[];
+  const [{ data: artists }, hidden] = await Promise.all([
+    supabase
+      .from("artists")
+      .select("*")
+      .in("shop_id", shopList.length ? shopList.map((s) => s.id) : [-1])
+      .order("name"),
+    getHiddenArtistIds(),
+  ]);
+  // Hidden artists are queued for deletion — drop them from the metro listing.
+  const artistList = ((artists ?? []) as Artist[]).filter((a) => !hidden.has(a.id));
   const byShop = new Map<number, Artist[]>();
   for (const ar of artistList) {
     byShop.set(ar.shop_id, [...(byShop.get(ar.shop_id) ?? []), ar]);

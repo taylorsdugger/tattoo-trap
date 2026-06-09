@@ -1,4 +1,5 @@
 import ArtistDirectory from "@/components/ArtistDirectory";
+import { getHiddenArtistIds } from "@/lib/search";
 import { supabase } from "@/lib/supabase";
 import type { DirectoryArtist, Metro } from "@/lib/types";
 
@@ -45,7 +46,13 @@ export default async function ArtistsPage({
   // The full list is loaded once; ArtistDirectory filters it client-side so
   // toggling metros/name/has-pics is instant (no refetch). The URL params only
   // seed the initial filter state for shareable/refresh-safe links.
-  const [metros, artists] = await Promise.all([getMetros(), getArtists()]);
+  const [metros, allArtists, hidden] = await Promise.all([
+    getMetros(),
+    getArtists(),
+    getHiddenArtistIds(),
+  ]);
+  // Hidden artists are queued for deletion — drop them from the public directory.
+  const artists = allArtists.filter((a) => !hidden.has(a.id));
 
   return (
     <div className="py-[clamp(28px,5vw,60px)]">

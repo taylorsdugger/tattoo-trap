@@ -3,16 +3,19 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIsAdmin } from "@/components/AuthProvider";
+import { useIsLocalhost } from "@/lib/useIsLocalhost";
 import { toast } from "@/lib/toast";
 
 /* Admin-only curation control: re-run the Python crawler against this artist's SHOP website, then
    embed whatever new candidates it finds. Use it to re-ingest a shop after a crawler change (the
    JS-gallery settle + relaxed name heuristics) without touching Apify/RapidAPI.
 
-   Compact 9×9 glyph for the list cards' action row. Gated to admins — renders nothing otherwise.
-   First click arms (no blocking confirm dialog); a second click within a few seconds runs it.
-   NOTE: the route spawns local Python+Playwright, so it only works in local dev (serverless has
-   no pipeline venv); the button still shows for admins on live but the call fails gracefully. */
+   Compact 9×9 glyph for the list cards' action row. First click arms (no blocking confirm dialog);
+   a second click within a few seconds runs it.
+
+   Localhost-only: the route spawns Python+Playwright from <repo>/pipeline (and needs the
+   service-role key), so it can only work in local dev — serverless has no pipeline venv. Gated to
+   admins on localhost so it doesn't show as a dead button on the deployed site. */
 export default function RecrawlShopButton({
   artistId,
   className = "",
@@ -22,11 +25,12 @@ export default function RecrawlShopButton({
 }) {
   const router = useRouter();
   const isAdmin = useIsAdmin();
+  const isLocalhost = useIsLocalhost();
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!isAdmin) return null;
+  if (!isAdmin || !isLocalhost) return null;
 
   const disarm = () => {
     if (disarmTimer.current) clearTimeout(disarmTimer.current);

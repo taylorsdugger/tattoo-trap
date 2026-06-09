@@ -6,6 +6,7 @@ import { displayImage } from "@/lib/images";
 import type { ArtistMatch } from "@/lib/types";
 import FavoriteButton from "./FavoriteButton";
 import FetchImagesButton from "./FetchImagesButton";
+import HideArtistButton from "./HideArtistButton";
 import RecrawlShopButton from "./RecrawlShopButton";
 import TrashArtistButton from "./TrashArtistButton";
 import { Label, Meter } from "./ui";
@@ -58,10 +59,17 @@ export default function ArtistCard({ match, rank }: { match: ArtistMatch; rank: 
             )}
             {/* Admin-only: re-crawl this artist's shop website (picks up new artists + images). */}
             <RecrawlShopButton artistId={match.artist_id} />
+            {/* Delete (✕) is localhost-only; Hide (⊘) shows for admins everywhere. On localhost
+                both appear so the hide flow is testable; in production only Hide does. */}
             <TrashArtistButton
               id={match.artist_id}
               name={match.artist_name}
               onDeleted={() => setTrashed(true)}
+            />
+            <HideArtistButton
+              id={match.artist_id}
+              name={match.artist_name}
+              onHidden={() => setTrashed(true)}
             />
           </div>
           {match.artist_instagram && (

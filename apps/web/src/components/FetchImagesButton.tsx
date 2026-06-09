@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIsAdmin } from "@/components/AuthProvider";
+import { useIsLocalhost } from "@/lib/useIsLocalhost";
 import { toast } from "@/lib/toast";
 import { btnPrimary } from "./ui";
 
@@ -10,7 +11,8 @@ import { btnPrimary } from "./ui";
    (no Apify credits). Two shapes:
      - "full"  → big labelled button + status line, for the artist detail page's empty portfolio.
      - "icon"  → compact 9×9 glyph for the list cards' action row (next to favorite/trash).
-   Both gate to admins: they render nothing for normal visitors, and the route 403s for them anyway.
+   Both gate to admins on localhost: they render nothing otherwise (the route needs the local-only
+   service-role key), and it 403s for non-admins anyway.
 
    This is Option A: it only queues `portfolio_images` candidates (source_url). They become
    visible thumbnails after the next `embed_images.py` run (inline locally, or via the scheduled
@@ -29,11 +31,13 @@ export default function FetchImagesButton({
 }) {
   const router = useRouter();
   const isAdmin = useIsAdmin();
+  const isLocalhost = useIsLocalhost();
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [message, setMessage] = useState<string>("");
 
-  // Admins only — renders null for everyone else, so nothing flashes for the public.
-  if (!isAdmin) return null;
+  // Admins on localhost only — the route needs the service-role key (local-only), so it'd error on
+  // live. Renders null for everyone else, so nothing flashes for the public.
+  if (!isAdmin || !isLocalhost) return null;
 
   async function run(): Promise<{ ok: boolean; message: string }> {
     try {

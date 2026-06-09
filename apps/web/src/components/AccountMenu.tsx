@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { signInWithGoogle } from "@/lib/signIn";
 import { createClient } from "@/lib/supabase/browser";
+import { useIsLocalhost } from "@/lib/useIsLocalhost";
 
 /* Header account control. Styled to sit inside the mono nav: a "Sign in" trigger when logged out,
    or the Google avatar + name + "Sign out" when logged in, so it's clear you're signed in. */
 export default function AccountMenu() {
-  const { email, name, avatarUrl, loading } = useAuth();
+  const { email, name, avatarUrl, role, loading } = useAuth();
   const router = useRouter();
   const [imgOk, setImgOk] = useState(true);
+  const isLocalhost = useIsLocalhost();
+  // Deletion only works locally, so the queue link is only useful in dev.
+  const isAdmin = (role === "admin" || role === "owner") && isLocalhost;
 
   // Avoid flashing "Sign in" before we know the state.
   if (loading) return null;
@@ -58,6 +63,11 @@ export default function AccountMenu() {
       <span className="max-w-[120px] truncate normal-case text-ink" title={email}>
         {displayName}
       </span>
+      {isAdmin && (
+        <Link href="/admin/hidden" className="text-ink-faint transition-colors hover:text-ink">
+          Hidden
+        </Link>
+      )}
       <button
         type="button"
         onClick={() => void signOut()}
